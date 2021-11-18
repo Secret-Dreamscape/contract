@@ -1,4 +1,3 @@
-use crate::contract::HandleMsg::PutDownCard;
 use crate::game_state::{Card, GameBoard, Player, State};
 use cosmwasm_std::{
   to_binary, Api, BankMsg, Coin, CosmosMsg, Env, Extern, HandleResponse, HandleResult, HumanAddr,
@@ -29,6 +28,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
       winner_for_turn: None,
       direction: false,
       cards: (None, None),
+      pool: 0,
     },
   };
 
@@ -43,8 +43,10 @@ pub enum HandleMsg {
   Join { secret: u128 },
   GetHand {},
   GetBoard {},
-  //  Bet {},
+  Deposit {},
+  Bet { amount: u128 },
   PutDownCard { index: usize },
+  RequestNextTurn { direction: bool },
 }
 
 fn generate_deck(mut rng: ChaCha20Rng) -> Vec<Card> {
@@ -95,6 +97,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           secret,
           deck: generate_deck(get_rng(&state, &env)),
           hp: 5,
+          deposit: 1_000_000,
         });
 
         state.save(&mut deps.storage)?;
@@ -105,6 +108,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           secret,
           deck: generate_deck(get_rng(&state, &env)),
           hp: 5,
+          deposit: 1_000_000,
         });
 
         state.save(&mut deps.storage)?;
@@ -184,12 +188,12 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       if request_attempt.is_none() {
         return Err(StdError::unauthorized());
       }
-      let player1 = state.player1.unwrap();
-      let player2 = state.player2.unwrap();
+      let player1 = state.player1.clone().unwrap();
+      let player2 = state.player2.clone().unwrap();
       let requester: Player = request_attempt.unwrap();
       let direction: bool = state.game_board.direction;
       return match state.game_board.cards {
-        (None, None) => show_game_board((None, None), direction),
+        (None, None) => show_game_board((None, None), direction, None),
         (Some(card), None) => {
           if requester.addr != player1.addr {
             return show_game_board(
@@ -201,6 +205,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
                 None,
               ),
               direction,
+              None,
             );
           }
           show_game_board(
@@ -212,6 +217,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
               None,
             ),
             direction,
+            None,
           )
         }
         (None, Some(card)) => {
@@ -225,6 +231,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
                 }),
               ),
               direction,
+              None,
             );
           }
           show_game_board(
@@ -236,9 +243,10 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
               }),
             ),
             direction,
+            None,
           )
         }
-        (Some(card1), Some(card2)) => {
+        (Some(ref card1), Some(ref card2)) => {
           // calculate who wins
           if !state.game_board.turn_ended {
             // TODO: this code sucks, but I don't understand rust enough to fix this yet...
@@ -250,34 +258,34 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
                   None
                 } else if card1.value > card2.value {
                   if direction {
-                    Some(player1)
+                    Some(player1.clone())
                   } else {
-                    Some(player2)
+                    Some(player2.clone())
                   }
                 } else {
                   if direction {
-                    Some(player2)
+                    Some(player2.clone())
                   } else {
-                    Some(player1)
+                    Some(player1.clone())
                   }
                 }
               }
-              (true, false) => Some(player1),
-              (false, true) => Some(player2),
+              (true, false) => Some(player1.clone()),
+              (false, true) => Some(player2.clone()),
               (true, true) => {
                 if card1.value == card2.value {
                   None
                 } else if card1.value > card2.value {
                   if direction {
-                    Some(player1)
+                    Some(player1.clone())
                   } else {
-                    Some(player2)
+                    Some(player2.clone())
                   }
                 } else {
                   if direction {
-                    Some(player2)
+                    Some(player2.clone())
                   } else {
-                    Some(player1)
+                    Some(player1.clone())
                   }
                 }
               }
@@ -286,38 +294,151 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             state.game_board.turn_ended = true;
 
             match winner {
-              None => {}
+              None => {
+                state.game_board.direction = !state.game_board.direction;
+              }
               Some(winner) => {
+                let mut newplayer1 = player1.clone();
+                let mut newplayer2 = player2.clone();
                 if winner.addr == player1.addr {
-                  let mut newplayer2 = player2.clone();
                   newplayer2.hp -= 1;
-                  state.player2 = Some(newplayer2);
+                  newplayer1.deposit += state.game_board.pool;
+                  state.game_board.pool = 0;
                 } else {
-                  let mut newplayer1 = player1.clone();
                   newplayer1.hp -= 1;
-                  state.player1 = Some(newplayer1);
+                  newplayer2.deposit += state.game_board.pool;
+                  state.game_board.pool = 0;
                 }
+                state.player1 = Some(newplayer1);
+                state.player2 = Some(newplayer2);
                 state.game_board.winner_for_turn = Some(winner.addr);
               }
             }
+            state.save(&mut deps.storage)?;
           }
 
           show_game_board(
             (
               Some(CardView {
-                card: Some(card1),
+                card: Some(card1.clone()),
                 visible: true,
               }),
               Some(CardView {
-                card: Some(card2),
+                card: Some(card2.clone()),
                 visible: true,
               }),
             ),
             direction,
+            state.game_board.winner_for_turn,
           )
         }
       };
-    } //    HandleMsg::Bet {} => {}
+    }
+    HandleMsg::Deposit {} => {
+      let mut state: State = State::load(&deps.storage)?;
+      if env.message.sent_funds.len() != 1
+        || env.message.sent_funds[0].amount < Uint128(1_000_000)
+        || env.message.sent_funds[0].denom != String::from("uscrt")
+      {
+        return Err(StdError::generic_err("Deposit at least 1 SCRT."));
+      }
+      let amount = env.clone().message.sent_funds[0].amount.clone();
+      require_both_players(&mut state)?;
+      let request_attempt = get_requesting_player(&deps, env);
+      if request_attempt.is_none() {
+        return Err(StdError::unauthorized());
+      }
+      let player1 = state.player1.clone().unwrap();
+      let player2 = state.player2.clone().unwrap();
+      let requester: Player = request_attempt.unwrap();
+      if player1.addr == requester.addr {
+        let mut newplayer1 = player1.clone();
+        newplayer1.deposit += amount.u128();
+        state.player1 = Some(newplayer1);
+      } else {
+        let mut newplayer2 = player2.clone();
+        newplayer2.deposit += amount.u128();
+        state.player1 = Some(newplayer2);
+      }
+      Ok(HandleResponse::default())
+    }
+    HandleMsg::Bet { amount } => {
+      let mut state: State = State::load(&deps.storage)?;
+      require_both_players(&mut state)?;
+      let request_attempt = get_requesting_player(&deps, env);
+      if request_attempt.is_none() {
+        return Err(StdError::unauthorized());
+      }
+      let player1 = state.player1.clone().unwrap();
+      let player2 = state.player2.clone().unwrap();
+
+      let requester: Player = request_attempt.unwrap();
+      if requester.deposit < amount {
+        return Err(StdError::generic_err(
+          "Insufficient funds. Please deposit more SCRT to continue with this bet",
+        ));
+      }
+      state.game_board.pool += amount;
+      if player1.addr == requester.addr {
+        let mut newplayer1 = player1.clone();
+        newplayer1.deposit -= amount;
+        state.player1 = Some(newplayer1);
+      } else {
+        let mut newplayer2 = player2.clone();
+        newplayer2.deposit -= amount;
+        state.player1 = Some(newplayer2);
+      }
+      state.save(&mut deps.storage)?;
+      Ok(HandleResponse::default())
+    }
+    HandleMsg::RequestNextTurn { direction } => {
+      let contract_addr = env.clone().contract.address;
+      let mut state: State = State::load(&deps.storage)?;
+      require_both_players(&mut state)?;
+      let request_attempt = get_requesting_player(&deps, env);
+      if request_attempt.is_none() {
+        return Err(StdError::unauthorized());
+      }
+      let player1 = state.player1.clone().unwrap();
+      let player2 = state.player2.clone().unwrap();
+
+      match state.game_board.winner_for_turn {
+        None => {
+          return Err(StdError::unauthorized());
+        }
+        Some(_) => {
+          // if either player ran out of hp, the game is done, so get the money
+          if player1.hp == 0 || player2.hp == 0 {
+            let transfers = vec![
+              CosmosMsg::Bank(BankMsg::Send {
+                from_address: contract_addr.clone(),
+                to_address: player1.addr,
+                amount: vec![Coin::new(player1.deposit, "uscrt")],
+              }),
+              CosmosMsg::Bank(BankMsg::Send {
+                from_address: contract_addr.clone(),
+                to_address: player2.addr,
+                amount: vec![Coin::new(player2.deposit, "uscrt")],
+              }),
+            ];
+            state.winner = state.game_board.winner_for_turn.clone();
+            state.save(&mut deps.storage)?;
+
+            return Ok(HandleResponse {
+              messages: transfers,
+              log: vec![],
+              data: None,
+            });
+          }
+          state.game_board.turn += 1;
+          state.game_board.winner_for_turn = None;
+          state.game_board.cards = (None, None);
+          state.game_board.direction = direction;
+          state.save(&mut deps.storage)?;
+          return Ok(HandleResponse::default());
+        }
+      }
+    }
   }
 }
 
@@ -328,11 +449,22 @@ fn require_both_players(state: &mut State) -> StdResult<bool> {
   return Ok(true);
 }
 
-fn show_game_board(cards: (Option<CardView>, Option<CardView>), direction: bool) -> HandleResult {
+fn show_game_board(
+  cards: (Option<CardView>, Option<CardView>),
+  direction: bool,
+  winner: Option<HumanAddr>,
+) -> HandleResult {
   return Ok(HandleResponse {
     messages: vec![],
     log: vec![],
-    data: Some(to_binary(&GameBoardView { cards, direction }).unwrap()),
+    data: Some(
+      to_binary(&GameBoardView {
+        cards,
+        direction,
+        winner,
+      })
+      .unwrap(),
+    ),
   });
 }
 
@@ -375,6 +507,7 @@ struct PlayerHand {
 struct GameBoardView {
   cards: (Option<CardView>, Option<CardView>),
   direction: bool,
+  winner: Option<HumanAddr>,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]

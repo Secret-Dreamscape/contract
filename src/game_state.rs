@@ -19,6 +19,7 @@ pub(crate) struct Player {
   pub(crate) secret: u128,
   pub(crate) deck: Vec<Card>,
   pub(crate) hp: u8,
+  pub(crate) deposit: u128,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
@@ -34,6 +35,7 @@ pub(crate) struct GameBoard {
   pub(crate) winner_for_turn: Option<HumanAddr>,
   pub(crate) direction: bool,
   pub(crate) cards: (Option<Card>, Option<Card>),
+  pub(crate) pool: u128,
 }
 
 impl State {
