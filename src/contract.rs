@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-  to_binary, Api, BankMsg, Binary, Coin, CosmosMsg, Env, Extern, HandleResponse, HandleResult,
-  HumanAddr, InitResponse, InitResult, Querier, QueryResult, StdError, StdResult, Storage, Uint128,
+  Api, BankMsg, Coin, CosmosMsg, Env, Extern, HandleResponse, HandleResult, InitResponse,
+  InitResult, Querier, StdError, StdResult, Storage, Uint128,
 };
 use rand_chacha::rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
@@ -60,19 +60,19 @@ fn generate_deck(mut rng: ChaChaRng) -> Vec<Card> {
       gold: (rng.next_u32() % 2) == 0,
     })
   }
-  return deck;
+  deck
 }
 
 fn get_rng(state: &State, env: &Env) -> ChaChaRng {
   let mut combined_secret: Vec<u8> = env.block.time.to_be_bytes().to_vec();
-  if !state.player1.is_none() {
+  if state.player1.is_some() {
     combined_secret.extend(&state.player1.as_ref().unwrap().secret.to_be_bytes());
   }
-  if !state.player2.is_none() {
+  if state.player2.is_some() {
     combined_secret.extend(&state.player2.as_ref().unwrap().secret.to_be_bytes());
   }
   let random_seed: [u8; 32] = Sha256::digest(&combined_secret).into();
-  return ChaChaRng::from_seed(random_seed);
+  ChaChaRng::from_seed(random_seed)
 }
 
 pub fn handle<S: Storage, A: Api, Q: Querier>(
@@ -84,7 +84,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     HandleMsg::Join { secret } => {
       if env.message.sent_funds.len() != 1
         || env.message.sent_funds[0].amount != Uint128(1_000_000)
-        || env.message.sent_funds[0].denom != String::from("uscrt")
+        || env.message.sent_funds[0].denom != *"uscrt"
       {
         return Err(StdError::generic_err(
           "Must deposit 1 SCRT to enter the game.",
@@ -107,7 +107,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           .set(b"state", &serde_json::to_vec(&state).unwrap());
         Ok(HandleResponse::default())
       } else if state.player2.is_none() {
-        if env.message.sender.clone() == state.player1.clone().unwrap().addr {
+        if env.message.sender == state.player1.clone().unwrap().addr {
           return Err(StdError::generic_err(
             "You are already in the game. You can't be both player 1 and player 2.",
           ));
@@ -175,60 +175,48 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           }
         }
       }
-      match state.game_board.cards.clone() {
-        (Some(player1_card), Some(player2_card)) => {
-          if !state.game_board.turn_ended {
-            // TODO: this code sucks, but I don't understand rust enough to fix this yet...
-            // I can't refactor the repeated check into a variable or even a lambda because it complains
-            // that I'm using a variable that's been moved, whatever the heck that means and there is seemingly no way to fix that
-            let winner = match (player1_card.gold, player2_card.gold) {
-              (false, false) => get_winner_for_cards(
-                &player1,
-                &player2,
-                state.game_board.direction,
-                &player1_card,
-                &player2_card,
-              ),
-              (true, false) => Some(player1.clone()),
-              (false, true) => Some(player2.clone()),
-              (true, true) => get_winner_for_cards(
-                &player1,
-                &player2,
-                state.game_board.direction,
-                &player1_card,
-                &player2_card,
-              ),
-            };
+      if let (Some(player1_card), Some(player2_card)) = state.game_board.cards.clone() {
+        if !state.game_board.turn_ended {
+          let value_winner = get_winner_for_cards(
+            &player1,
+            &player2,
+            state.game_board.direction,
+            &player1_card,
+            &player2_card,
+          );
+          let winner = match (player1_card.gold, player2_card.gold) {
+            (false, false) => value_winner,
+            (true, false) => Some(player1.clone()),
+            (false, true) => Some(player2.clone()),
+            (true, true) => value_winner,
+          };
 
-            state.game_board.turn_ended = true;
+          state.game_board.turn_ended = true;
 
-            match winner {
-              None => {
-                state.game_board.direction = !state.game_board.direction;
-                state.game_board.cards = (None, None);
+          match winner {
+            None => {
+              state.game_board.direction = !state.game_board.direction;
+              state.game_board.cards = (None, None);
+            }
+            Some(winner) => {
+              let mut newplayer1 = player1.clone();
+              let mut newplayer2 = player2.clone();
+              if winner.addr == player1.addr {
+                newplayer2.hp -= 1;
+                newplayer1.deposit += state.game_board.pool;
+              } else {
+                newplayer1.hp -= 1;
+                newplayer2.deposit += state.game_board.pool;
               }
-              Some(winner) => {
-                let mut newplayer1 = player1.clone();
-                let mut newplayer2 = player2.clone();
-                if winner.addr == player1.addr {
-                  newplayer2.hp -= 1;
-                  newplayer1.deposit += state.game_board.pool;
-                  state.game_board.pool = 0;
-                } else {
-                  newplayer1.hp -= 1;
-                  newplayer2.deposit += state.game_board.pool;
-                  state.game_board.pool = 0;
-                }
-                player1 = newplayer1.clone();
-                player2 = newplayer2.clone();
-                state.player1 = Some(newplayer1);
-                state.player2 = Some(newplayer2);
-                state.game_board.winner_for_turn = Some(winner.addr);
-              }
+              state.game_board.pool = 0;
+              player1 = newplayer1.clone();
+              player2 = newplayer2.clone();
+              state.player1 = Some(newplayer1);
+              state.player2 = Some(newplayer2);
+              state.game_board.winner_for_turn = Some(winner.addr);
             }
           }
         }
-        _ => {}
       }
       if requester.addr == state.player1.clone().unwrap().addr {
         player1.deck.remove(index as usize);
@@ -240,17 +228,17 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       deps
         .storage
         .set(b"state", &serde_json::to_vec(&state).unwrap());
-      return Ok(HandleResponse::default());
+      Ok(HandleResponse::default())
     }
     HandleMsg::Deposit {} => {
       let mut state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
       if env.message.sent_funds.len() != 1
         || env.message.sent_funds[0].amount < Uint128(1_000_000)
-        || env.message.sent_funds[0].denom != String::from("uscrt")
+        || env.message.sent_funds[0].denom != *"uscrt"
       {
         return Err(StdError::generic_err("Deposit at least 1 SCRT."));
       }
-      let amount = env.clone().message.sent_funds[0].amount.clone();
+      let amount = env.message.sent_funds[0].amount;
       require_both_players(&mut state)?;
       let request_attempt = get_requesting_player(&deps, env);
       if request_attempt.is_none() {
@@ -260,11 +248,11 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       let player2 = state.player2.clone().unwrap();
       let requester: Player = request_attempt.unwrap();
       if player1.addr == requester.addr {
-        let mut newplayer1 = player1.clone();
+        let mut newplayer1 = player1;
         newplayer1.deposit += amount.u128() as u64;
         state.player1 = Some(newplayer1);
       } else {
-        let mut newplayer2 = player2.clone();
+        let mut newplayer2 = player2;
         newplayer2.deposit += amount.u128() as u64;
         state.player2 = Some(newplayer2);
       }
@@ -291,11 +279,11 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       }
       state.game_board.pool += amount;
       if player1.addr == requester.addr {
-        let mut newplayer1 = player1.clone();
+        let mut newplayer1 = player1;
         newplayer1.deposit -= amount;
         state.player1 = Some(newplayer1);
       } else {
-        let mut newplayer2 = player2.clone();
+        let mut newplayer2 = player2;
         newplayer2.deposit -= amount;
         state.player1 = Some(newplayer2);
       }
@@ -316,9 +304,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       let player2 = state.player2.clone().unwrap();
 
       match state.game_board.winner_for_turn {
-        None => {
-          return Err(StdError::unauthorized());
-        }
+        None => Err(StdError::unauthorized()),
         Some(_) => {
           // if either player ran out of hp, the game is done, so get the money
           if player1.hp == 0 || player2.hp == 0 {
@@ -329,7 +315,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
                 amount: vec![Coin::new(player1.deposit as u128, "uscrt")],
               }),
               CosmosMsg::Bank(BankMsg::Send {
-                from_address: contract_addr.clone(),
+                from_address: contract_addr,
                 to_address: player2.addr,
                 amount: vec![Coin::new(player2.deposit as u128, "uscrt")],
               }),
@@ -353,7 +339,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           deps
             .storage
             .set(b"state", &serde_json::to_vec(&state).unwrap());
-          return Ok(HandleResponse::default());
+          Ok(HandleResponse::default())
         }
       }
     }
@@ -375,12 +361,10 @@ fn get_winner_for_cards(
     } else {
       Some(player2.clone())
     }
+  } else if direction {
+    Some(player2.clone())
   } else {
-    if direction {
-      Some(player2.clone())
-    } else {
-      Some(player1.clone())
-    }
+    Some(player1.clone())
   }
 }
 
@@ -388,7 +372,7 @@ fn require_both_players(state: &mut State) -> StdResult<bool> {
   if state.player1.is_none() || state.player2.is_none() {
     return Err(StdError::unauthorized());
   }
-  return Ok(true);
+  Ok(true)
 }
 
 pub(crate) fn get_requesting_player<S: Storage, A: Api, Q: Querier>(
@@ -416,7 +400,7 @@ pub(crate) fn get_requesting_player<S: Storage, A: Api, Q: Querier>(
       }
     }
   }
-  return requester;
+  requester
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]

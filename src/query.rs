@@ -1,9 +1,8 @@
-use cosmwasm_std::{Api, Binary, Env, Extern, HumanAddr, Querier, QueryResult, StdError, Storage};
+use cosmwasm_std::{Api, Binary, Extern, HumanAddr, Querier, QueryResult, StdError, Storage};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json_wasm as serde_json;
 
-use crate::contract::get_requesting_player;
 use crate::game_state::{Card, Player, State};
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
@@ -44,14 +43,14 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
         return Err(StdError::generic_err("Still waiting for players."));
       }
 
-      return Ok(Binary(serde_json::to_vec(&vec![false]).unwrap()));
+      Ok(Binary(serde_json::to_vec(&vec![false]).unwrap()))
     }
     QueryMsg::GetBets {} => {
       let state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
       let player1 = state.player1.clone().unwrap();
-      let player2 = state.player2.clone().unwrap();
+      let player2 = state.player2.unwrap();
 
-      return Ok(Binary(
+      Ok(Binary(
         serde_json::to_vec(&vec![
           BetsResult {
             addr: player1.addr,
@@ -65,7 +64,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
           },
         ])
         .unwrap(),
-      ));
+      ))
     }
     QueryMsg::GetHand { secret } => {
       let state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
@@ -74,7 +73,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
       }
 
       let player1 = state.player1.clone().unwrap();
-      let player2 = state.player2.clone().unwrap();
+      let player2 = state.player2.unwrap();
 
       let account_with_secret = match (player1.secret == secret, player2.secret == secret) {
         (false, false) => None,
@@ -89,7 +88,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
 
       let hand: Vec<Card> = (&account_with_secret.unwrap().deck[0..4]).to_vec();
 
-      return Ok(Binary(serde_json::to_vec(&HandResult { hand }).unwrap()));
+      Ok(Binary(serde_json::to_vec(&HandResult { hand }).unwrap()))
     }
     QueryMsg::GetBoard { secret } => {
       let state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
@@ -112,10 +111,10 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
       }
       let requester: Player = request_attempt.unwrap();
       let direction: bool = state.game_board.direction;
-      return match state.game_board.cards {
+      match state.game_board.cards {
         (None, None) => show_game_board((None, None), direction, None),
         (Some(card), None) => {
-          if requester.addr != player1.clone().addr {
+          if requester.addr != player1.addr {
             return show_game_board(
               (
                 Some(CardView {
@@ -141,7 +140,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
           )
         }
         (None, Some(card)) => {
-          if requester.addr != player2.clone().addr {
+          if requester.addr != player2.addr {
             return show_game_board(
               (
                 None,
@@ -180,7 +179,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
           direction,
           state.game_board.winner_for_turn,
         ),
-      };
+      }
     }
   }
 }
@@ -190,14 +189,14 @@ fn show_game_board(
   direction: bool,
   winner: Option<HumanAddr>,
 ) -> QueryResult {
-  return Ok(Binary(
+  Ok(Binary(
     serde_json::to_vec(&GameBoardView {
       cards,
       direction,
       winner,
     })
     .unwrap(),
-  ));
+  ))
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
