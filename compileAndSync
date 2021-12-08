@@ -1,0 +1,5 @@
+#!/bin/zsh
+make build
+make find-floating-points
+rsync -arvP --exclude='target' --exclude='.idea' . suitcase:Projects/SecretDreamscape/contract/
+#ssh suitcase 'updateSecretContract'

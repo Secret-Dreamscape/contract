@@ -13,6 +13,13 @@ test: unit-test
 unit-test:
 	cargo test
 
+.PHONY: find-floating-points
+find-floating-points:
+	cargo build --release --target wasm32-unknown-unknown --locked
+	twiggy paths ./target/wasm32-unknown-unknown/release/*.wasm > find_floats_twiggy.txt
+	wasm2wat ./target/wasm32-unknown-unknown/release/*.wasm | grep -B 20 -e 'f32' -e 'f64' > find_floats_grep.txt
+
+
 # This is a local build with debug-prints activated. Debug prints only show up
 # in the local development chain (see the `start-server` command below)
 # and mainnet won't accept contracts built with the feature enabled.
@@ -62,4 +69,5 @@ store-contract-local:
 .PHONY: clean
 clean:
 	cargo clean
+	-rm -rf target/
 	-rm -f ./contract.wasm ./contract.wasm.gz

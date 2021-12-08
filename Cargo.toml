@@ -33,3 +33,4 @@ serde = { version = "1.0.114", default-features = false, features = [
 sha2 = "0.9.1"
 rand_chacha = "0.2.2"
 rand = "0.7.3"
+lazy_static = "1.4.0"

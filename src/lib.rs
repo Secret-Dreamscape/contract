@@ -1,6 +1,8 @@
+mod constants;
 pub mod contract;
 mod game_state;
 pub mod query;
+mod utils;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm {
