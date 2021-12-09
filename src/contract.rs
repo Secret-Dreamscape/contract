@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use cosmwasm_std::{
   Api, BankMsg, Coin, CosmosMsg, Env, Extern, HandleResponse, HandleResult, InitResponse,
   InitResult, Querier, StdError, StdResult, Storage, Uint128,
@@ -184,12 +186,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           }
           Some(winner) => {
             for i in 0..state.players.len() {
-              if winner.player_addr == state.players[i].addr {
-                state.players[i].hand = new_hand.clone();
-              } else {
-                if state.players[i].hp > 0 {
-                  state.players[i].hp -= 1;
-                }
+              if winner.player_addr != state.players[i].addr && state.players[i].hp > 0 {
+                state.players[i].hp -= 1;
               }
               state.players[i].bet = 0;
               state.players[i].bet2 = 0;
@@ -416,12 +414,16 @@ fn get_winner_for_turn(state: &State) -> Option<Word> {
   for i in 0..state.game_board.words.len() {
     let word = state.game_board.words[i].clone();
     let score_for_word = get_score_for_word(&*word.cards);
-    if score_for_word == max_score {
-      repetitions += 1;
-    } else {
-      max_score = score_for_word;
-      highest_scoring_word = Some(word.clone());
-      repetitions = 0;
+    match score_for_word.cmp(&max_score) {
+      Ordering::Equal => {
+        repetitions += 1;
+      }
+      Ordering::Less => {}
+      Ordering::Greater => {
+        max_score = score_for_word;
+        highest_scoring_word = Some(word.clone());
+        repetitions = 0;
+      }
     }
   }
   if repetitions != 0 {
