@@ -1,17 +1,17 @@
 use std::cmp::Ordering;
 
 use cosmwasm_std::{
-  Api, BankMsg, Coin, CosmosMsg, Env, Extern, HandleResponse, HandleResult, InitResponse,
-  InitResult, Querier, StdError, StdResult, Storage, Uint128,
+  Api, BankMsg, Coin, CosmosMsg, Env, Extern, HandleResponse, HandleResult, HumanAddr,
+  InitResponse, InitResult, Querier, StdError, StdResult, Storage, Uint128,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json_wasm as serde_json;
 
 use crate::constants::{
-  ALREADY_IN_GAME, ALREADY_PUT_DOWN, AT_LEAST_1SCRT, CANT_PUT_CARD_AT_THE_MOMENT,
-  CANT_USE_CARD_TWICE, GAME_FULL, NOT_IN_GAME, NOT_IN_YOUR_HAND, NO_NEXT_TURN,
-  WRONG_MATCHING_AMOUNT,
+  ALREADY_IN_GAME, ALREADY_PUT_DOWN, AT_LEAST_1SCRT, CANT_BET_IF_FOLDED,
+  CANT_PUT_CARD_AT_THE_MOMENT, CANT_PUT_CARD_IF_FOLDED, CANT_USE_CARD_TWICE, GAME_FULL,
+  NOT_IN_GAME, NOT_IN_YOUR_HAND, NO_NEXT_TURN, WRONG_MATCHING_AMOUNT,
 };
 use crate::game_state::{Card, GameBoard, GameRound, Player, State, Word};
 use crate::utils::{generate_deck, get_n_cards, get_rng, get_score_for_word};
@@ -125,6 +125,9 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       if state.game_board.round != GameRound::Choice {
         return Err(StdError::generic_err(CANT_PUT_CARD_AT_THE_MOMENT));
       }
+      if requester.folded {
+        return Err(StdError::generic_err(CANT_PUT_CARD_IF_FOLDED));
+      }
 
       let mut indexes_used: Vec<u8> = vec![];
       for index in indexes.iter() {
@@ -139,7 +142,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       }
       let mut transfers: Vec<CosmosMsg> = vec![];
 
-      let contract_addr = env.contract.address;
       let mut word: Vec<Card> = vec![];
       for index in indexes.iter() {
         let uindex = *index as usize;
@@ -176,7 +178,9 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         }
       }
 
-      if state.game_board.words.len() == state.players.len() {
+      let non_folded_players = get_non_folded_players(&mut state);
+
+      if state.game_board.words.len() == non_folded_players.len() {
         let winner = get_winner_for_turn(&state);
 
         match winner {
@@ -193,15 +197,12 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
               state.players[i].bet2 = 0;
             }
 
-            state.game_board.winner_for_turn = Some(winner.clone().player_addr);
-            if state.game_board.pool > 0 {
-              transfers.push(CosmosMsg::Bank(BankMsg::Send {
-                from_address: contract_addr,
-                to_address: winner.player_addr,
-                amount: vec![Coin::new(state.game_board.pool as u128, "uscrt")],
-              }));
-            }
-            state.game_board.pool = 0;
+            give_winner_their_money(
+              &mut state,
+              &mut transfers,
+              env.contract.address,
+              winner.player_addr,
+            );
           }
         }
       }
@@ -209,15 +210,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       deps
         .storage
         .set(b"state", &serde_json::to_vec(&state).unwrap());
-      if transfers.len() > 0 {
-        Ok(HandleResponse {
-          messages: transfers,
-          log: vec![],
-          data: None,
-        })
-      } else {
-        Ok(HandleResponse::default())
-      }
+      send_transfers_if_any(transfers)
     }
     HandleMsg::Bet {} => {
       let mut state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
@@ -240,6 +233,9 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       state.game_board.pool += env.message.sent_funds[0].amount.clone().u128() as u64;
       for i in 0..state.players.len() {
         if state.players[i].addr == env.message.sender {
+          if state.players[i].folded {
+            return Err(StdError::generic_err(CANT_BET_IF_FOLDED));
+          }
           if state.game_board.round == GameRound::Blind {
             state.players[i].bet += env.message.sent_funds[0].amount.clone().u128() as u64;
           } else {
@@ -292,6 +288,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           for i in 0..state.players.len() {
             state.players[i].bet = 0;
             state.players[i].bet2 = 0;
+            state.players[i].folded = false;
           }
           deps
             .storage
@@ -356,14 +353,44 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       }
 
       advance_to_next_round_if_all_players_bets_match_or_have_folded(&mut state, highest_bet)?;
+      let transfers = advance_to_next_turn_if_all_players_but_one_folded(&mut state, env);
 
       deps
         .storage
         .set(b"state", &serde_json::to_vec(&state).unwrap());
 
-      Ok(HandleResponse::default())
+      send_transfers_if_any(transfers)
     }
   }
+}
+
+fn send_transfers_if_any(transfers: Vec<CosmosMsg>) -> Result<HandleResponse, StdError> {
+  if transfers.len() > 0 {
+    Ok(HandleResponse {
+      messages: transfers,
+      log: vec![],
+      data: None,
+    })
+  } else {
+    Ok(HandleResponse::default())
+  }
+}
+
+fn give_winner_their_money(
+  mut state: &mut State,
+  transfers: &mut Vec<CosmosMsg>,
+  contract_addr: HumanAddr,
+  winner: HumanAddr,
+) {
+  state.game_board.winner_for_turn = Some(winner.clone());
+  if state.game_board.pool > 0 {
+    transfers.push(CosmosMsg::Bank(BankMsg::Send {
+      from_address: contract_addr,
+      to_address: winner.clone(),
+      amount: vec![Coin::new(state.game_board.pool as u128, "uscrt")],
+    }));
+  }
+  state.game_board.pool = 0;
 }
 
 fn get_highest_bet(state: &State) -> u64 {
@@ -380,6 +407,19 @@ fn get_highest_bet(state: &State) -> u64 {
     }
   }
   highest_bet
+}
+
+fn advance_to_next_turn_if_all_players_but_one_folded(
+  state: &mut State,
+  env: Env,
+) -> Vec<CosmosMsg> {
+  let mut transfers: Vec<CosmosMsg> = vec![];
+  let non_folded = get_non_folded_players(state);
+  if (state.players.len() - 1) == non_folded.len() {
+    let winner = non_folded[0].clone().addr;
+    give_winner_their_money(state, &mut transfers, env.contract.address, winner)
+  }
+  transfers
 }
 
 fn advance_to_next_round_if_all_players_bets_match_or_have_folded(
@@ -404,6 +444,16 @@ fn advance_to_next_round_if_all_players_bets_match_or_have_folded(
     state.game_board.round = GameRound::Choice;
   }
   Ok(true)
+}
+
+fn get_non_folded_players(state: &mut State) -> Vec<Player> {
+  let mut players = vec![];
+  for i in 0..state.players.len() {
+    if !state.players[i].folded {
+      players.push(state.players[i].clone());
+    }
+  }
+  players
 }
 
 fn get_winner_for_turn(state: &State) -> Option<Word> {

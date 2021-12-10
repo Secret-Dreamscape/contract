@@ -52,6 +52,7 @@ struct PlayerStatus {
   hp: u8,
   bet: u64,
   addr: HumanAddr,
+  folded: bool,
 }
 
 fn get_stats_for_players(saved_state: &State, output_state: &mut GameState) {
@@ -67,6 +68,7 @@ fn get_stats_for_players(saved_state: &State, output_state: &mut GameState) {
       } else {
         player.clone().bet
       },
+      folded: player.folded,
     })
   }
 }
