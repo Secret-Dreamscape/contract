@@ -12,3 +12,4 @@ pub(crate) static ALREADY_IN_GAME: &str = "You're already in the game and can't 
 pub(crate) static WRONG_MATCHING_AMOUNT: &str = "You've sent the wrong bet amount.";
 pub(crate) static CANT_BET_IF_FOLDED: &str = "You can't bet if you're folded.";
 pub(crate) static CANT_PUT_CARD_IF_FOLDED: &str = "You can't put down a card if you're folded.";
+pub(crate) static WRONG_PASSWORD: &str = "Wrong room password.";

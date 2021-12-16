@@ -10,6 +10,9 @@ pub(crate) struct State {
   pub(crate) game_board: GameBoard,
   pub(crate) winner: Option<HumanAddr>,
   pub(crate) deck: Vec<Card>,
+  pub(crate) started_time: u64,
+  pub(crate) level_design: u64,
+  pub(crate) password: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]

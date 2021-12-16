@@ -11,20 +11,24 @@ use serde_json_wasm as serde_json;
 use crate::constants::{
   ALREADY_IN_GAME, ALREADY_PUT_DOWN, AT_LEAST_1SCRT, CANT_BET_IF_FOLDED,
   CANT_PUT_CARD_AT_THE_MOMENT, CANT_PUT_CARD_IF_FOLDED, CANT_USE_CARD_TWICE, GAME_FULL,
-  NOT_IN_GAME, NOT_IN_YOUR_HAND, NO_NEXT_TURN, WRONG_MATCHING_AMOUNT,
+  NOT_IN_GAME, NOT_IN_YOUR_HAND, NO_NEXT_TURN, WRONG_MATCHING_AMOUNT, WRONG_PASSWORD,
 };
 use crate::game_state::{Card, GameBoard, GameRound, Player, State, Word};
 use crate::utils::{generate_deck, get_n_cards, get_rng, get_score_for_word};
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub struct InitMsg {}
+pub struct InitMsg {
+  bg: u64,
+  password: Option<String>,
+}
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
   deps: &mut Extern<S, A, Q>,
-  _env: Env,
-  _msg: InitMsg,
+  env: Env,
+  msg: InitMsg,
 ) -> InitResult {
+  let block_time = env.block.time;
   let state = State {
     players: vec![],
     winner: None,
@@ -38,6 +42,9 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     },
     deck: vec![],
     can_join: true,
+    started_time: block_time,
+    level_design: msg.bg,
+    password: msg.password,
   };
 
   deps
@@ -50,7 +57,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
-  Join { secret: u64 },
+  Join { secret: u64, password: String },
   Bet {},
   Match {},
   Fold {},
@@ -64,7 +71,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
   msg: HandleMsg,
 ) -> HandleResult {
   match msg {
-    HandleMsg::Join { secret } => {
+    HandleMsg::Join { secret, password } => {
       if env.message.sent_funds.len() != 1
         || env.message.sent_funds[0].amount != Uint128(1_000_000)
         || env.message.sent_funds[0].denom != *"uscrt"
@@ -73,6 +80,12 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       }
 
       let mut state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
+
+      if let Some(ref pass) = state.password {
+        if &password != pass {
+          return Err(StdError::generic_err(WRONG_PASSWORD));
+        }
+      }
 
       if state.players.len() == 4 {
         return Err(StdError::generic_err(GAME_FULL));

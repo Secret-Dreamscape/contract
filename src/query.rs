@@ -36,6 +36,7 @@ struct GameState {
 
   words: Vec<WordView>,
   winner: Option<HumanAddr>,
+  level_design: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
@@ -53,6 +54,14 @@ struct PlayerStatus {
   bet: u64,
   addr: HumanAddr,
   folded: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+struct CanJoinResponse {
+  can_join: bool,
+  started_time: u64,
+  requires_password: bool,
 }
 
 fn get_stats_for_players(saved_state: &State, output_state: &mut GameState) {
@@ -163,7 +172,12 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
     QueryMsg::CanJoin {} => {
       let state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
       let can_join = state.winner.is_none() && state.players.len() < 4;
-      Ok(Binary(serde_json::to_vec(&vec![can_join]).unwrap()))
+      let resp = CanJoinResponse {
+        can_join,
+        started_time: state.started_time,
+        requires_password: state.password.is_some(),
+      };
+      Ok(Binary(serde_json::to_vec(&resp).unwrap()))
     }
     QueryMsg::GetGameState { secret } => {
       let saved_state: State =
@@ -182,6 +196,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
         round: saved_state.game_board.round.clone(),
         players: vec![],
         hand: vec![],
+        level_design: saved_state.level_design,
       };
 
       get_stats_for_players(&saved_state, &mut output_state);

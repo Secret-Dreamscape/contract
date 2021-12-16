@@ -1,0 +1,6 @@
+Thank you so much to everyone who contributed to this project.
+
+Secret Contract and Web Frontend: Danny Morabito (@thelmuxkriovar)
+Game idea and playtesting: Gino Bernardi (@zorostang) and Daniel Allen (@solidwhetstone)
+Card design: Daniel Allen (@solidwhetstone)
+Leadership during development: Gino Bernardi (@zorostang)
