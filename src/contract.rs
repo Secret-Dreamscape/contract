@@ -181,13 +181,9 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         cards: word,
         player_addr: requester.addr.clone(),
       });
-      if new_hand.len() < 5 {
-        let count: u8 = 5 - new_hand.len() as u8;
-        new_hand.append(&mut get_n_cards(&mut state, count));
-        for i in 0..state.players.len() {
-          if state.players[i].addr == requester.addr {
-            state.players[i].hand = new_hand.clone();
-          }
+      for i in 0..state.players.len() {
+        if state.players[i].addr == requester.addr {
+          state.players[i].hand = new_hand.clone();
         }
       }
 
@@ -302,6 +298,12 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             state.players[i].bet = 0;
             state.players[i].bet2 = 0;
             state.players[i].folded = false;
+            let mut new_hand = state.players[i].hand.clone();
+            if new_hand.len() < 5 {
+              let count: u8 = 5 - new_hand.len() as u8;
+              new_hand.append(&mut get_n_cards(&mut state, count));
+              state.players[i].hand = new_hand.clone();
+            }
           }
           deps
             .storage
@@ -362,6 +364,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       for i in 0..state.players.len() {
         if state.players[i].addr == env.message.sender {
           state.players[i].folded = true;
+          state.players[i].hand = get_n_cards(&mut state, 5);
         }
       }
 
@@ -378,7 +381,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 }
 
 fn send_transfers_if_any(transfers: Vec<CosmosMsg>) -> Result<HandleResponse, StdError> {
-  if transfers.len() > 0 {
+  if !transfers.is_empty() {
     Ok(HandleResponse {
       messages: transfers,
       log: vec![],
@@ -399,7 +402,7 @@ fn give_winner_their_money(
   if state.game_board.pool > 0 {
     transfers.push(CosmosMsg::Bank(BankMsg::Send {
       from_address: contract_addr,
-      to_address: winner.clone(),
+      to_address: winner,
       amount: vec![Coin::new(state.game_board.pool as u128, "uscrt")],
     }));
   }
@@ -413,10 +416,8 @@ fn get_highest_bet(state: &State) -> u64 {
       if player.bet > highest_bet {
         highest_bet = player.clone().bet;
       }
-    } else {
-      if player.bet2 > highest_bet {
-        highest_bet = player.clone().bet2;
-      }
+    } else if player.bet2 > highest_bet {
+      highest_bet = player.clone().bet2;
     }
   }
   highest_bet
@@ -428,7 +429,7 @@ fn advance_to_next_turn_if_all_players_but_one_folded(
 ) -> Vec<CosmosMsg> {
   let mut transfers: Vec<CosmosMsg> = vec![];
   let non_folded = get_non_folded_players(state);
-  if (state.players.len() - 1) == non_folded.len() {
+  if non_folded.len() == 1 {
     let winner = non_folded[0].clone().addr;
     give_winner_their_money(state, &mut transfers, env.contract.address, winner)
   }
