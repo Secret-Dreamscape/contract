@@ -5,7 +5,8 @@ use serde_json_wasm as serde_json;
 
 use crate::constants::{NOT_IN_GAME, WAITING_FOR_PLAYERS};
 use crate::game_state::{Card, GameRound, Player, State, Word};
-use crate::utils::get_score_for_word;
+use crate::utils::cards::get_score_for_word;
+use crate::utils::general::get_non_folded_players;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -114,9 +115,10 @@ fn get_words(
   }
 
   if let Some(player) = player_with_secret {
+    let non_folded_players = get_non_folded_players(saved_state);
     let words_submitted_count = saved_state.game_board.words.len();
     for word in &saved_state.game_board.words {
-      if words_submitted_count == saved_state.players.len() {
+      if words_submitted_count == non_folded_players.len() {
         output_state.words.push(WordView {
           word: Some(word.clone()),
           points: get_score_for_word(&word.cards),

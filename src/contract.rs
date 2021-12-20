@@ -14,7 +14,8 @@ use crate::constants::{
   NOT_IN_GAME, NOT_IN_YOUR_HAND, NO_NEXT_TURN, WRONG_MATCHING_AMOUNT, WRONG_PASSWORD,
 };
 use crate::game_state::{Card, GameBoard, GameRound, Player, State, Word};
-use crate::utils::{generate_deck, get_n_cards, get_rng, get_score_for_word};
+use crate::utils::cards::{generate_deck, get_n_cards, get_rng, get_score_for_word};
+use crate::utils::general::get_non_folded_players;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -111,7 +112,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         // after the second player joins we need to start generating decks
         state.deck = generate_deck(get_rng(&state, &env));
 
-        state.game_board.river = get_n_cards(&mut state, 5).to_owned();
+        state.game_board.river = get_n_cards(&mut state, 5);
       }
 
       if state.players.len() >= 2 {
@@ -187,7 +188,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         }
       }
 
-      let non_folded_players = get_non_folded_players(&mut state);
+      let non_folded_players = get_non_folded_players(&state);
 
       if state.game_board.words.len() == non_folded_players.len() {
         let winner = get_winner_for_turn(&state);
@@ -252,23 +253,11 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           }
         }
       }
-      let players_that_submitted_a_bet = if state.game_board.round == GameRound::Blind {
-        state.players.iter().filter(|p| p.bet > 0).count()
-      } else {
-        state.players.iter().filter(|p| p.bet2 > 0).count()
-      };
-      if players_that_submitted_a_bet == state.players.len() {
-        // if every player submitted a bet go to matching round
-        state.game_board.round = if state.game_board.round == GameRound::Flop {
-          GameRound::Matching2
-        } else {
-          GameRound::Matching
-        }
-      }
 
       let highest_bet = get_highest_bet(&state);
 
       advance_to_next_round_if_all_players_bets_match_or_have_folded(&mut state, highest_bet)?;
+      advance_to_next_round_if_all_non_folded_players_bet(&mut state)?;
 
       deps
         .storage
@@ -452,22 +441,54 @@ fn advance_to_next_round_if_all_players_bets_match_or_have_folded(
       }
     }
   }
-  if state.game_board.round == GameRound::Matching {
-    state.game_board.round = GameRound::Flop;
-  } else if state.game_board.round == GameRound::Matching2 {
-    state.game_board.round = GameRound::Choice;
+  match state.game_board.round {
+    GameRound::Matching => {
+      state.game_board.round = GameRound::Flop;
+    }
+    GameRound::Flop => {
+      // this will only happen if the condition above is true, meaning that it's fine to go to
+      // the choice round, because every non folded player bet the same amount
+      state.game_board.round = GameRound::Choice;
+    }
+    GameRound::Matching2 => {
+      state.game_board.round = GameRound::Choice;
+    }
+    _ => {}
   }
   Ok(true)
 }
 
-fn get_non_folded_players(state: &mut State) -> Vec<Player> {
-  let mut players = vec![];
+fn advance_to_next_round_if_all_non_folded_players_bet(state: &mut State) -> StdResult<bool> {
   for i in 0..state.players.len() {
     if !state.players[i].folded {
-      players.push(state.players[i].clone());
+      let player_bet = if state.game_board.round == GameRound::Matching
+        || state.game_board.round == GameRound::Blind
+      {
+        state.players[i].bet
+      } else {
+        state.players[i].bet2
+      };
+      if player_bet == 0 {
+        return Ok(false);
+      }
     }
   }
-  players
+  match state.game_board.round {
+    GameRound::Blind => {
+      state.game_board.round = GameRound::Matching;
+    }
+    GameRound::Matching => {
+      state.game_board.round = GameRound::Flop;
+    }
+    GameRound::Flop => {
+      state.game_board.round = GameRound::Matching2;
+    }
+    GameRound::Matching2 => {
+      state.game_board.round = GameRound::Choice;
+    }
+    _ => {}
+  }
+  Ok(true)
 }
 
 fn get_winner_for_turn(state: &State) -> Option<Word> {
