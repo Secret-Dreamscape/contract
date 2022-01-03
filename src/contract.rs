@@ -345,7 +345,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       let mut state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
       require_at_least_two_players(&mut state)?;
 
-      let highest_bet = get_highest_bet(&state);
+      let _highest_bet = get_highest_bet(&state);
 
       for i in 0..state.players.len() {
         if state.players[i].addr == env.message.sender {
@@ -436,17 +436,15 @@ fn get_bet_stats(state: &mut State) -> (bool, bool) {
       };
       if player_bet == 0 {
         all_non_folded_players_bet = false;
-      } else {
-        if player_bet != last_bet {
-          if last_bet != 0 {
-            all_players_bet_the_same_amount = false;
-          }
-          last_bet = player_bet;
+      } else if player_bet != last_bet {
+        if last_bet != 0 {
+          all_players_bet_the_same_amount = false;
         }
+        last_bet = player_bet;
       }
     }
   }
-  return (all_non_folded_players_bet, all_players_bet_the_same_amount);
+  (all_non_folded_players_bet, all_players_bet_the_same_amount)
 }
 
 fn advance_turn_if_necessary(state: &mut State) {

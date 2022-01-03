@@ -1,9 +1,7 @@
 #[cfg(test)]
 mod test {
   use cosmwasm_std::testing::*;
-  use cosmwasm_std::{
-    from_binary, Coin, Extern, HandleResult, HumanAddr, InitResponse, StdError, StdResult, Uint128,
-  };
+  use cosmwasm_std::{from_binary, Coin, Extern, HandleResult, InitResponse, StdResult, Uint128};
 
   use secret_dreamscape::contract::{handle, init, HandleMsg, InitMsg};
   use secret_dreamscape::game_state::GameRound;
@@ -49,11 +47,11 @@ mod test {
       );
     }
 
-    return (init_result, deps);
+    (init_result, deps)
   }
 
   fn get_game_state(deps: &mut Extern<MockStorage, MockApi, MockQuerier>) -> GameState {
-    let query_data = query(&deps, QueryMsg::GetGameState { secret: 0 });
+    let query_data = query(deps, QueryMsg::GetGameState { secret: 0 });
     from_binary(&query_data.unwrap()).unwrap()
   }
 
