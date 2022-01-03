@@ -3,53 +3,53 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
-pub(crate) struct State {
-  pub(crate) players: Vec<Player>,
-  pub(crate) can_join: bool,
+pub struct State {
+  pub players: Vec<Player>,
+  pub can_join: bool,
 
-  pub(crate) game_board: GameBoard,
-  pub(crate) winner: Option<HumanAddr>,
-  pub(crate) deck: Vec<Card>,
-  pub(crate) started_time: u64,
-  pub(crate) level_design: u64,
-  pub(crate) password: Option<String>,
+  pub game_board: GameBoard,
+  pub winner: Option<HumanAddr>,
+  pub deck: Vec<Card>,
+  pub started_time: u64,
+  pub level_design: u64,
+  pub password: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
-pub(crate) struct Player {
-  pub(crate) addr: HumanAddr,
-  pub(crate) secret: u64,
-  pub(crate) hp: u8,
-  pub(crate) hand: Vec<Card>,
-  pub(crate) bet: u64,
-  pub(crate) bet2: u64,
-  pub(crate) folded: bool,
+pub struct Player {
+  pub addr: HumanAddr,
+  pub secret: u64,
+  pub hp: u8,
+  pub hand: Vec<Card>,
+  pub bet: u64,
+  pub bet2: u64,
+  pub folded: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
-pub(crate) struct Card {
-  pub(crate) letter: u8,
-  pub(crate) gold: bool,
+pub struct Card {
+  pub letter: u8,
+  pub gold: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
-pub(crate) struct GameBoard {
-  pub(crate) turn: u8,
-  pub(crate) round: GameRound,
-  pub(crate) winner_for_turn: Option<HumanAddr>,
-  pub(crate) words: Vec<Word>,
-  pub(crate) river: Vec<Card>,
-  pub(crate) pool: u64,
+pub struct GameBoard {
+  pub turn: u8,
+  pub round: GameRound,
+  pub winner_for_turn: Option<HumanAddr>,
+  pub words: Vec<Word>,
+  pub river: Vec<Card>,
+  pub pool: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
-pub(crate) struct Word {
-  pub(crate) cards: Vec<Card>,
-  pub(crate) player_addr: HumanAddr,
+pub struct Word {
+  pub cards: Vec<Card>,
+  pub player_addr: HumanAddr,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema, PartialEq)]
-pub(crate) enum GameRound {
+pub enum GameRound {
   // turn not started yet, initial state
   None,
 

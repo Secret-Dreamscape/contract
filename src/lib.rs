@@ -1,6 +1,6 @@
 mod constants;
 pub mod contract;
-mod game_state;
+pub mod game_state;
 pub mod query;
 mod utils;
 

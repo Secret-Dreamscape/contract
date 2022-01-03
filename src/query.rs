@@ -24,25 +24,25 @@ struct Result {
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-struct GameState {
-  pool: u64,
+pub struct GameState {
+  pub pool: u64,
 
-  players: Vec<PlayerStatus>,
+  pub players: Vec<PlayerStatus>,
 
-  turn: u8,
-  round: GameRound,
+  pub turn: u8,
+  pub round: GameRound,
 
-  hand: Vec<Card>,
-  river: Option<Vec<Card>>,
+  pub hand: Vec<Card>,
+  pub river: Option<Vec<Card>>,
 
-  words: Vec<WordView>,
-  winner: Option<HumanAddr>,
-  level_design: u64,
+  pub words: Vec<WordView>,
+  pub winner: Option<HumanAddr>,
+  pub level_design: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-struct WordView {
+pub struct WordView {
   word: Option<Word>,
   points: u16,
   visible: bool,
@@ -50,7 +50,7 @@ struct WordView {
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-struct PlayerStatus {
+pub struct PlayerStatus {
   hp: u8,
   bet: u64,
   addr: HumanAddr,

@@ -20,8 +20,8 @@ use crate::utils::general::get_non_folded_players;
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct InitMsg {
-  bg: u64,
-  password: Option<String>,
+  pub bg: u64,
+  pub password: Option<String>,
 }
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
@@ -254,10 +254,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         }
       }
 
-      let highest_bet = get_highest_bet(&state);
-
-      advance_to_next_round_if_all_players_bets_match_or_have_folded(&mut state, highest_bet)?;
-      advance_to_next_round_if_all_non_folded_players_bet(&mut state)?;
+      advance_turn_if_necessary(&mut state);
 
       deps
         .storage
@@ -336,7 +333,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         }
       }
 
-      advance_to_next_round_if_all_players_bets_match_or_have_folded(&mut state, highest_bet)?;
+      advance_turn_if_necessary(&mut state);
 
       deps
         .storage
@@ -357,7 +354,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         }
       }
 
-      advance_to_next_round_if_all_players_bets_match_or_have_folded(&mut state, highest_bet)?;
+      advance_turn_if_necessary(&mut state);
       let transfers = advance_to_next_turn_if_all_players_but_one_folded(&mut state, env);
 
       deps
@@ -394,8 +391,8 @@ fn give_winner_their_money(
       to_address: winner,
       amount: vec![Coin::new(state.game_board.pool as u128, "uscrt")],
     }));
+    state.game_board.pool = 0;
   }
-  state.game_board.pool = 0;
 }
 
 fn get_highest_bet(state: &State) -> u64 {
@@ -425,70 +422,56 @@ fn advance_to_next_turn_if_all_players_but_one_folded(
   transfers
 }
 
-fn advance_to_next_round_if_all_players_bets_match_or_have_folded(
-  state: &mut State,
-  highest_bet: u64,
-) -> StdResult<bool> {
+fn get_bet_stats(state: &mut State) -> (bool, bool) {
+  let mut last_bet = 0;
+  let mut all_non_folded_players_bet = true;
+  let mut all_players_bet_the_same_amount = true;
   for i in 0..state.players.len() {
     if !state.players[i].folded {
-      let player_bet = if state.game_board.round == GameRound::Matching {
-        state.players[i].bet
-      } else {
-        state.players[i].bet2
-      };
-      if player_bet != highest_bet {
-        return Ok(false);
-      }
-    }
-  }
-  match state.game_board.round {
-    GameRound::Matching => {
-      state.game_board.round = GameRound::Flop;
-    }
-    GameRound::Flop => {
-      // this will only happen if the condition above is true, meaning that it's fine to go to
-      // the choice round, because every non folded player bet the same amount
-      state.game_board.round = GameRound::Choice;
-    }
-    GameRound::Matching2 => {
-      state.game_board.round = GameRound::Choice;
-    }
-    _ => {}
-  }
-  Ok(true)
-}
-
-fn advance_to_next_round_if_all_non_folded_players_bet(state: &mut State) -> StdResult<bool> {
-  for i in 0..state.players.len() {
-    if !state.players[i].folded {
-      let player_bet = if state.game_board.round == GameRound::Matching
-        || state.game_board.round == GameRound::Blind
-      {
-        state.players[i].bet
-      } else {
-        state.players[i].bet2
+      let player_bet = match state.game_board.round {
+        GameRound::None => 0,
+        GameRound::Blind | GameRound::Matching => state.players[i].bet,
+        GameRound::Flop | GameRound::Matching2 => state.players[i].bet2,
+        GameRound::Choice => state.players[i].bet + state.players[i].bet2,
       };
       if player_bet == 0 {
-        return Ok(false);
+        all_non_folded_players_bet = false;
+      } else {
+        if player_bet != last_bet {
+          if last_bet != 0 {
+            all_players_bet_the_same_amount = false;
+          }
+          last_bet = player_bet;
+        }
       }
     }
   }
+  return (all_non_folded_players_bet, all_players_bet_the_same_amount);
+}
+
+fn advance_turn_if_necessary(state: &mut State) {
   match state.game_board.round {
-    GameRound::Blind => {
-      state.game_board.round = GameRound::Matching;
-    }
-    GameRound::Matching => {
-      state.game_board.round = GameRound::Flop;
-    }
-    GameRound::Flop => {
-      state.game_board.round = GameRound::Matching2;
-    }
-    GameRound::Matching2 => {
-      state.game_board.round = GameRound::Choice;
-    }
-    _ => {}
+    GameRound::None => {}
+    GameRound::Blind => match get_bet_stats(state) {
+      (true, false) => state.game_board.round = GameRound::Matching,
+      (true, true) => state.game_board.round = GameRound::Flop,
+      _ => {}
+    },
+    GameRound::Matching => match get_bet_stats(state) {
+      (true, true) => state.game_board.round = GameRound::Flop,
+      _ => {}
+    },
+    GameRound::Flop => match get_bet_stats(state) {
+      (true, false) => state.game_board.round = GameRound::Matching2,
+      (true, true) => state.game_board.round = GameRound::Choice,
+      _ => {}
+    },
+    GameRound::Matching2 => match get_bet_stats(state) {
+      (true, true) => state.game_board.round = GameRound::Choice,
+      _ => {}
+    },
+    GameRound::Choice => {}
   }
-  Ok(true)
 }
 
 fn get_winner_for_turn(state: &State) -> Option<Word> {
