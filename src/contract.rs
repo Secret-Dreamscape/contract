@@ -143,7 +143,14 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::generic_err(CANT_PUT_CARD_IF_FOLDED));
       }
 
+      for i in 0..state.game_board.words.len() {
+        if state.game_board.words[i].player_addr == requester.addr {
+          return Err(StdError::generic_err(ALREADY_PUT_DOWN));
+        }
+      }
+
       let mut indexes_used: Vec<u8> = vec![];
+      let mut word: Vec<Card> = vec![];
       for index in indexes.iter() {
         if indexes_used.contains(index) {
           return Err(StdError::generic_err(CANT_USE_CARD_TWICE));
@@ -152,19 +159,14 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           // 250...255 can be treated as the indexes for the cards on the board
           return Err(StdError::generic_err(NOT_IN_YOUR_HAND));
         }
+        word.push(if index >= &(250_u8) {
+          state.game_board.river[(*index as usize) - 250].clone()
+        } else {
+          requester.hand[(*index as usize)].clone()
+        });
         indexes_used.push(*index);
       }
       let mut transfers: Vec<CosmosMsg> = vec![];
-
-      let mut word: Vec<Card> = vec![];
-      for index in indexes.iter() {
-        let uindex = *index as usize;
-        word.push(if index >= &(250_u8) {
-          state.game_board.river[uindex - 250].clone()
-        } else {
-          requester.hand[uindex].clone()
-        });
-      }
       let mut new_hand: Vec<Card> = vec![];
       for i in 0..requester.hand.len() {
         if !indexes.contains(&(i as u8)) {
@@ -172,19 +174,15 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         }
       }
 
-      for i in 0..state.game_board.words.len() {
-        if state.game_board.words[i].player_addr == requester.addr {
-          return Err(StdError::generic_err(ALREADY_PUT_DOWN));
-        }
-      }
-
       state.game_board.words.push(Word {
         cards: word,
         player_addr: requester.addr.clone(),
       });
+
       for i in 0..state.players.len() {
         if state.players[i].addr == requester.addr {
           state.players[i].hand = new_hand.clone();
+          break;
         }
       }
 
