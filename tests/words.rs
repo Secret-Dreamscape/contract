@@ -128,4 +128,52 @@ mod test {
       "Winner is not the highest word"
     );
   }
+
+  /// Test if putting down the same card twice results in an error
+  #[test]
+  fn putting_down_card_twice_results_in_err() {
+    let (_, mut deps) = init_with_4_players();
+
+    send_bet(&mut deps, 0, Uint128(1_000_000));
+    send_bet(&mut deps, 1, Uint128(1_000_000));
+    send_bet(&mut deps, 2, Uint128(1_000_000));
+    send_bet(&mut deps, 3, Uint128(1_000_000));
+    send_bet(&mut deps, 0, Uint128(1_000_000));
+    send_bet(&mut deps, 1, Uint128(1_000_000));
+    send_bet(&mut deps, 2, Uint128(1_000_000));
+    send_bet(&mut deps, 3, Uint128(1_000_000));
+
+    let word = put_down_word(&mut deps, 0, vec![0, 0]);
+    assert!(
+      word.is_err(),
+      "putting down the same card twice should result in an error",
+    );
+  }
+
+  /// Test if putting down an invalid word results in an error
+  #[test]
+  fn putting_down_invalid_word_results_in_err() {
+    let (_, mut deps) = init_with_4_players();
+
+    send_bet(&mut deps, 0, Uint128(1_000_000));
+    send_bet(&mut deps, 1, Uint128(1_000_000));
+    send_bet(&mut deps, 2, Uint128(1_000_000));
+    send_bet(&mut deps, 3, Uint128(1_000_000));
+    send_bet(&mut deps, 0, Uint128(1_000_000));
+    send_bet(&mut deps, 1, Uint128(1_000_000));
+    send_bet(&mut deps, 2, Uint128(1_000_000));
+    send_bet(&mut deps, 3, Uint128(1_000_000));
+
+    let word = put_down_word(&mut deps, 0, vec![6]);
+    assert!(
+      word.is_err(),
+      "putting down the same card twice should result in an error",
+    );
+
+    let word = put_down_word(&mut deps, 0, vec![123]);
+    assert!(
+      word.is_err(),
+      "putting down the same card twice should result in an error",
+    );
+  }
 }
