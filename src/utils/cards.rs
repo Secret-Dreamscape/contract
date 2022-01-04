@@ -16,7 +16,7 @@ lazy_static! {
   };
 }
 
-pub(crate) fn get_score_for_word(cards: &[Card]) -> u16 {
+pub fn get_score_for_word(cards: &[Card]) -> u16 {
   let card_to_point: Vec<u16> = vec![
     1, 3, 3, 2, 1, 4, 2, 4, 1, 8, 5, 1, 3, 1, 1, 3, 10, 1, 1, 1, 1, 4, 4, 8, 4, 8,
   ];
@@ -39,7 +39,7 @@ pub(crate) fn get_score_for_word(cards: &[Card]) -> u16 {
   score
 }
 
-pub(crate) fn get_n_cards(state: &mut State, count: u8) -> Vec<Card> {
+pub fn get_n_cards(state: &mut State, count: u8) -> Vec<Card> {
   let mut cards = vec![];
   for _ in 0..count {
     cards.push(state.deck.swap_remove(0))
@@ -47,8 +47,8 @@ pub(crate) fn get_n_cards(state: &mut State, count: u8) -> Vec<Card> {
   cards
 }
 
-pub(crate) fn generate_deck(mut rng: ChaChaRng) -> Vec<Card> {
-  let count_per_card: HashMap<u8, u8> = HashMap::from([
+pub fn generate_deck(mut rng: ChaChaRng) -> Vec<Card> {
+  let count_per_card: Vec<(u8, u8)> = vec![
     (4, 12),
     (0, 9),
     (8, 9),
@@ -75,7 +75,7 @@ pub(crate) fn generate_deck(mut rng: ChaChaRng) -> Vec<Card> {
     (23, 1),
     (16, 1),
     (25, 1),
-  ]);
+  ];
 
   let mut deck: Vec<Card> = vec![];
   for (_, (letter, count)) in count_per_card.iter().enumerate() {
@@ -95,7 +95,7 @@ pub(crate) fn generate_deck(mut rng: ChaChaRng) -> Vec<Card> {
   deck
 }
 
-pub(crate) fn get_rng(state: &State, env: &Env) -> ChaChaRng {
+pub fn get_rng(state: &State, env: &Env) -> ChaChaRng {
   let mut combined_secret: Vec<u8> = env.block.time.to_be_bytes().to_vec();
   for player in state.players.iter() {
     combined_secret.extend(&player.secret.to_be_bytes());
