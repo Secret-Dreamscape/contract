@@ -13,7 +13,7 @@ use crate::constants::{
   CANT_PUT_CARD_AT_THE_MOMENT, CANT_PUT_CARD_IF_FOLDED, CANT_USE_CARD_TWICE, GAME_FULL,
   NOT_IN_GAME, NOT_IN_YOUR_HAND, NO_NEXT_TURN, WRONG_MATCHING_AMOUNT, WRONG_PASSWORD,
 };
-use crate::game_state::{Card, GameBoard, GameRound, Player, State, Word};
+use crate::game_state::{Card, GameBoard, GameRound, Player, PlayerAction, State, Word};
 use crate::utils::cards::{generate_deck, get_n_cards, get_rng, get_score_for_word};
 use crate::utils::general::get_non_folded_players;
 
@@ -62,7 +62,10 @@ pub enum HandleMsg {
   Bet {},
   Match {},
   Fold {},
-  PutDownCard { indexes: Vec<u8> },
+  PutDownCard {
+    indexes: Vec<u8>,
+    opened_dictionary: bool,
+  },
   RequestNextTurn {},
 }
 
@@ -106,6 +109,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         bet: 0,
         bet2: 0,
         folded: false,
+        opened_dictionary: false,
+        last_action: None,
       });
 
       if state.players.len() == 2 {
@@ -132,7 +137,10 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         .set(b"state", &serde_json::to_vec(&state).unwrap());
       Ok(HandleResponse::default())
     }
-    HandleMsg::PutDownCard { indexes } => {
+    HandleMsg::PutDownCard {
+      indexes,
+      opened_dictionary,
+    } => {
       let mut state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
       require_at_least_two_players(&mut state)?;
       let requester = get_requesting_player(&deps, env.clone())?;
@@ -181,6 +189,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 
       for i in 0..state.players.len() {
         if state.players[i].addr == requester.addr {
+          state.players[i].opened_dictionary = opened_dictionary;
+          state.players[i].last_action = Some(PlayerAction::ChoseWord);
           state.players[i].hand = new_hand.clone();
           break;
         }
@@ -244,10 +254,12 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           if state.players[i].folded {
             return Err(StdError::generic_err(CANT_BET_IF_FOLDED));
           }
+          let amount = env.message.sent_funds[0].amount.clone();
+          state.players[i].last_action = Some(PlayerAction::SentBet(amount.u128() as u64));
           if state.game_board.round == GameRound::Blind {
-            state.players[i].bet += env.message.sent_funds[0].amount.clone().u128() as u64;
+            state.players[i].bet += amount.u128() as u64;
           } else {
-            state.players[i].bet2 += env.message.sent_funds[0].amount.clone().u128() as u64;
+            state.players[i].bet2 += amount.u128() as u64;
           }
         }
       }
@@ -282,6 +294,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             state.players[i].bet = 0;
             state.players[i].bet2 = 0;
             state.players[i].folded = false;
+            state.players[i].opened_dictionary = false;
+            state.players[i].last_action = None;
             let mut new_hand = state.players[i].hand.clone();
             if new_hand.len() < 5 {
               let count: u8 = 5 - new_hand.len() as u8;
@@ -328,6 +342,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             state.game_board.pool += highest_bet - state.players[i].bet2;
             state.players[i].bet2 = highest_bet;
           }
+          state.players[i].last_action = Some(PlayerAction::MatchedBet);
         }
       }
 
@@ -349,6 +364,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         if state.players[i].addr == env.message.sender {
           state.players[i].folded = true;
           state.players[i].hand = get_n_cards(&mut state, 5);
+          state.players[i].last_action = Some(PlayerAction::Folded);
         }
       }
 
@@ -446,6 +462,7 @@ fn get_bet_stats(state: &mut State) -> (bool, bool) {
 }
 
 fn advance_turn_if_necessary(state: &mut State) {
+  let previous_round = state.game_board.round.clone();
   match state.game_board.round {
     GameRound::None => {}
     GameRound::Blind => match get_bet_stats(state) {
@@ -467,6 +484,11 @@ fn advance_turn_if_necessary(state: &mut State) {
       _ => {}
     },
     GameRound::Choice => {}
+  }
+  if previous_round != state.game_board.round {
+    for i in 0..state.players.len() {
+      state.players[i].last_action = None;
+    }
   }
 }
 

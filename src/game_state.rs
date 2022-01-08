@@ -15,6 +15,14 @@ pub struct State {
   pub password: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, JsonSchema, PartialEq)]
+pub enum PlayerAction {
+  SentBet(u64),
+  MatchedBet,
+  Folded,
+  ChoseWord,
+}
+
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 pub struct Player {
   pub addr: HumanAddr,
@@ -24,6 +32,8 @@ pub struct Player {
   pub bet: u64,
   pub bet2: u64,
   pub folded: bool,
+  pub opened_dictionary: bool,
+  pub last_action: Option<PlayerAction>,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]

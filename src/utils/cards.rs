@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use cosmwasm_std::Env;
 use lazy_static::lazy_static;
 use rand::prelude::SliceRandom;

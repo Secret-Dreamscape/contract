@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json_wasm as serde_json;
 
 use crate::constants::{NOT_IN_GAME, WAITING_FOR_PLAYERS};
-use crate::game_state::{Card, GameRound, Player, State, Word};
+use crate::game_state::{Card, GameRound, Player, PlayerAction, State, Word};
 use crate::utils::cards::get_score_for_word;
 use crate::utils::general::get_non_folded_players;
 
@@ -18,7 +18,7 @@ pub enum QueryMsg {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-struct Result {
+pub struct Result {
   winner: HumanAddr,
 }
 
@@ -55,11 +55,13 @@ pub struct PlayerStatus {
   bet: u64,
   addr: HumanAddr,
   folded: bool,
+  last_action: Option<PlayerAction>,
+  opened_dictionary: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-struct CanJoinResponse {
+pub struct CanJoinResponse {
   can_join: bool,
   started_time: u64,
   requires_password: bool,
@@ -79,6 +81,8 @@ fn get_stats_for_players(saved_state: &State, output_state: &mut GameState) {
         player.clone().bet
       },
       folded: player.folded,
+      last_action: player.clone().last_action,
+      opened_dictionary: player.clone().opened_dictionary,
     })
   }
 }
