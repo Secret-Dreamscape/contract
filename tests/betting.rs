@@ -137,4 +137,24 @@ mod test {
     let game = get_game_state(&mut deps, 0);
     assert!(game.winner.is_some(), "Winner is not set");
   }
+
+  /// Test if a player can't bet if they've folded
+  #[test]
+  fn player_cant_bet_if_folded() {
+    let (_, mut deps) = init_with_4_players();
+
+    fold(&mut deps, 0);
+
+    let bet = send_bet(&mut deps, 0, Uint128(1_000_000));
+    assert!(bet.is_err(), "Player can bet after folding");
+  }
+
+  /// Test if a player can't send a bet smaller than 1 SCRT
+  #[test]
+  fn cant_send_small_bet() {
+    let (_, mut deps) = init_with_4_players();
+
+    let bet = send_bet(&mut deps, 0, Uint128(1));
+    assert!(bet.is_err(), "Player can send a bet smaller than 1 SCRT");
+  }
 }
