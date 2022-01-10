@@ -58,7 +58,10 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
-  Join { secret: u64, password: String },
+  Join {
+    secret: u64,
+    password: String,
+  },
   Bet {},
   Match {},
   Fold {},
@@ -74,6 +77,10 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
   env: Env,
   msg: HandleMsg,
 ) -> HandleResult {
+  let mut state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
+  if state.winner.is_some() {
+    return Err(StdError::generic_err("Game is over"));
+  }
   match msg {
     HandleMsg::Join { secret, password } => {
       if env.message.sent_funds.len() != 1
@@ -82,8 +89,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       {
         return Err(StdError::generic_err(AT_LEAST_1SCRT));
       }
-
-      let mut state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
 
       if let Some(ref pass) = state.password {
         if &password != pass {
@@ -141,7 +146,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       indexes,
       opened_dictionary,
     } => {
-      let mut state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
       require_at_least_two_players(&mut state)?;
       let requester = get_requesting_player(&deps, env.clone())?;
       if state.game_board.round != GameRound::Choice {
@@ -199,30 +203,30 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       let non_folded_players = get_non_folded_players(&state);
 
       if state.game_board.words.len() == non_folded_players.len() {
-        let winner = get_winner_for_turn(&state);
+        let mut winners = get_winners_for_turn(&state);
 
-        match winner {
-          None => {
-            state.game_board.words = vec![];
-            state.game_board.round = GameRound::Blind;
-          }
-          Some(winner) => {
-            for i in 0..state.players.len() {
-              if winner.player_addr != state.players[i].addr && state.players[i].hp > 0 {
-                state.players[i].hp -= 1;
-              }
-              state.players[i].bet = 0;
-              state.players[i].bet2 = 0;
-            }
+        let mut winner_addresses = vec![];
 
-            give_winner_their_money(
-              &mut state,
-              &mut transfers,
-              env.contract.address,
-              winner.player_addr,
-            );
-          }
+        state.game_board.winner_for_turn = Some(winners[0].clone().player_addr);
+
+        for i in 0..winners.len() {
+          winner_addresses.push(winners[i].player_addr.clone());
         }
+
+        for i in 0..state.players.len() {
+          if winner_addresses.contains(&state.players[i].addr.clone()) && state.players[i].hp > 0 {
+            state.players[i].hp -= 1;
+          }
+          state.players[i].bet = 0;
+          state.players[i].bet2 = 0;
+        }
+
+        give_winners_their_money(
+          &mut state,
+          &mut transfers,
+          env.contract.address,
+          winner_addresses,
+        );
       }
 
       deps
@@ -231,7 +235,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       send_transfers_if_any(transfers)
     }
     HandleMsg::Bet {} => {
-      let mut state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
       require_at_least_two_players(&mut state)?;
 
       if env.message.sent_funds.len() != 1 {
@@ -272,7 +275,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       Ok(HandleResponse::default())
     }
     HandleMsg::RequestNextTurn {} => {
-      let mut state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
       require_at_least_two_players(&mut state)?;
       get_requesting_player(&deps, env)?;
 
@@ -312,7 +314,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       Ok(HandleResponse::default())
     }
     HandleMsg::Match {} => {
-      let mut state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
       require_at_least_two_players(&mut state)?;
 
       let highest_bet = get_highest_bet(&state);
@@ -355,7 +356,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       Ok(HandleResponse::default())
     }
     HandleMsg::Fold {} => {
-      let mut state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
       require_at_least_two_players(&mut state)?;
 
       let _highest_bet = get_highest_bet(&state);
@@ -392,19 +392,22 @@ fn send_transfers_if_any(transfers: Vec<CosmosMsg>) -> Result<HandleResponse, St
   }
 }
 
-fn give_winner_their_money(
+fn give_winners_their_money(
   mut state: &mut State,
   transfers: &mut Vec<CosmosMsg>,
   contract_addr: HumanAddr,
-  winner: HumanAddr,
+  winners: Vec<HumanAddr>,
 ) {
-  state.game_board.winner_for_turn = Some(winner.clone());
+  state.game_board.winner_for_turn = Some(winners[0].clone());
+  let amount_per_transfer = (state.game_board.pool as u128) / (winners.len() as u128);
   if state.game_board.pool > 0 {
-    transfers.push(CosmosMsg::Bank(BankMsg::Send {
-      from_address: contract_addr,
-      to_address: winner,
-      amount: vec![Coin::new(state.game_board.pool as u128, "uscrt")],
-    }));
+    for i in 0..winners.len() {
+      transfers.push(CosmosMsg::Bank(BankMsg::Send {
+        from_address: contract_addr.clone(),
+        to_address: winners[i].clone(),
+        amount: vec![Coin::new(amount_per_transfer, "uscrt")],
+      }));
+    }
     state.game_board.pool = 0;
   }
 }
@@ -431,7 +434,7 @@ fn advance_to_next_turn_if_all_players_but_one_folded(
   let non_folded = get_non_folded_players(state);
   if non_folded.len() == 1 {
     let winner = non_folded[0].clone().addr;
-    give_winner_their_money(state, &mut transfers, env.contract.address, winner)
+    give_winners_their_money(state, &mut transfers, env.contract.address, vec![winner])
   }
   transfers
 }
@@ -492,30 +495,25 @@ fn advance_turn_if_necessary(state: &mut State) {
   }
 }
 
-fn get_winner_for_turn(state: &State) -> Option<Word> {
+fn get_winners_for_turn(state: &State) -> Vec<Word> {
   let mut max_score = 0;
-  let mut repetitions = 0;
-  let mut highest_scoring_word: Option<Word> = None;
+  let mut highest_scoring_words: Vec<Word> = vec![];
 
   for i in 0..state.game_board.words.len() {
     let word = state.game_board.words[i].clone();
     let score_for_word = get_score_for_word(&*word.cards);
     match score_for_word.cmp(&max_score) {
       Ordering::Equal => {
-        repetitions += 1;
+        highest_scoring_words.push(word.clone());
       }
       Ordering::Less => {}
       Ordering::Greater => {
         max_score = score_for_word;
-        highest_scoring_word = Some(word.clone());
-        repetitions = 0;
+        highest_scoring_words = vec![word.clone()];
       }
     }
   }
-  if repetitions != 0 {
-    return None;
-  }
-  highest_scoring_word
+  highest_scoring_words
 }
 
 fn require_at_least_two_players(state: &mut State) -> StdResult<bool> {

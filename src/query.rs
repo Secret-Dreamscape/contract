@@ -43,9 +43,9 @@ pub struct GameState {
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct WordView {
-  word: Option<Word>,
-  points: u16,
-  visible: bool,
+  pub word: Option<Word>,
+  pub points: u16,
+  pub visible: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
@@ -55,7 +55,7 @@ pub struct PlayerStatus {
   bet: u64,
   addr: HumanAddr,
   folded: bool,
-  last_action: Option<PlayerAction>,
+  pub last_action: Option<PlayerAction>,
   opened_dictionary: bool,
 }
 
@@ -64,7 +64,7 @@ pub struct PlayerStatus {
 pub struct CanJoinResponse {
   can_join: bool,
   started_time: u64,
-  requires_password: bool,
+  pub requires_password: bool,
 }
 
 fn get_stats_for_players(saved_state: &State, output_state: &mut GameState) {
@@ -177,7 +177,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
     }
     QueryMsg::CanJoin {} => {
       let state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
-      let can_join = state.winner.is_none() && state.players.len() < 4;
+      let can_join = state.players.len() < 4;
       let resp = CanJoinResponse {
         can_join,
         started_time: state.started_time,

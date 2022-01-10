@@ -4,7 +4,8 @@ mod utils;
 mod test {
   use cosmwasm_std::testing::*;
   use cosmwasm_std::{
-    from_binary, Coin, Extern, HandleResult, HumanAddr, InitResponse, StdResult, Uint128,
+    from_binary, BankMsg, Coin, CosmosMsg, Extern, HandleResult, HumanAddr, InitResponse,
+    StdResult, Uint128,
   };
 
   use secret_dreamscape::contract::{handle, init, HandleMsg, InitMsg};
@@ -99,7 +100,7 @@ mod test {
   /// Test if the highest scoring word wins
   #[test]
   fn highest_score_wins() {
-    let (_, mut deps) = init_with_4_players();
+    let (_, mut deps) = init_with_4_players(false);
 
     send_bet(&mut deps, 0, Uint128(1_000_000));
     send_bet(&mut deps, 1, Uint128(1_000_000));
@@ -129,10 +130,60 @@ mod test {
     );
   }
 
+  /// Test if the winner collects the right amount
+  #[test]
+  fn winner_collects_the_right_amount() {
+    let (_, mut deps) = init_with_4_players(false);
+
+    send_bet(&mut deps, 0, Uint128(1_000_000));
+    send_bet(&mut deps, 1, Uint128(1_000_000));
+    send_bet(&mut deps, 2, Uint128(1_000_000));
+    send_bet(&mut deps, 3, Uint128(1_000_000));
+    send_bet(&mut deps, 0, Uint128(1_000_000));
+    send_bet(&mut deps, 1, Uint128(1_000_000));
+    send_bet(&mut deps, 2, Uint128(1_000_000));
+    send_bet(&mut deps, 3, Uint128(1_000_000));
+
+    // letters on player1's hands are: y, t, g, c, l
+    // letters on player2's hands are: r, t, i, a, d
+    // letters on player3's hands are: t, a, i, k, o
+    // letters on player4's hands are: a, a, r, m gold, s
+    // letters on river are: l, i, n, a, b
+    put_down_word(&mut deps, 0, vec![254, 251, 250, 4, 0, 3, 253, 252]); // billycan: 15
+    put_down_word(&mut deps, 1, vec![254, 253, 252, 4, 2, 1]); // bandit: 9
+    put_down_word(&mut deps, 2, vec![2, 252, 3, 254, 250, 4, 0]); // inkblot: 13
+    let final_step = put_down_word(&mut deps, 3, vec![254, 253, 251, 250, 4, 3, 0, 252]); // bailsman: 24
+
+    let transfer_message = final_step.unwrap().messages[0].clone();
+    match transfer_message {
+      CosmosMsg::Bank(msg) => match msg {
+        BankMsg::Send {
+          from_address,
+          to_address,
+          amount,
+        } => {
+          assert_eq!(
+            to_address,
+            HumanAddr("player3".to_string()),
+            "Winner did not collect the pot"
+          );
+          assert_eq!(
+            amount[0],
+            Coin {
+              amount: Uint128(8_000_000),
+              denom: "uscrt".to_string(),
+            }
+          );
+        }
+      },
+      _ => panic!("Expected bank transfer message"),
+    }
+  }
+
   /// Test if putting down the same card twice results in an error
   #[test]
   fn putting_down_card_twice_results_in_err() {
-    let (_, mut deps) = init_with_4_players();
+    let (_, mut deps) = init_with_4_players(false);
 
     send_bet(&mut deps, 0, Uint128(1_000_000));
     send_bet(&mut deps, 1, Uint128(1_000_000));
@@ -153,7 +204,7 @@ mod test {
   /// Test if putting down an invalid word results in an error
   #[test]
   fn putting_down_invalid_word_results_in_err() {
-    let (_, mut deps) = init_with_4_players();
+    let (_, mut deps) = init_with_4_players(false);
 
     send_bet(&mut deps, 0, Uint128(1_000_000));
     send_bet(&mut deps, 1, Uint128(1_000_000));
