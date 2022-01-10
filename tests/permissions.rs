@@ -3,15 +3,9 @@ mod utils;
 #[cfg(test)]
 mod test {
   use cosmwasm_std::testing::*;
-  use cosmwasm_std::{
-    from_binary, BankMsg, Coin, CosmosMsg, Extern, HandleResult, HumanAddr, InitResponse,
-    StdResult, Uint128,
-  };
+  use cosmwasm_std::{Coin, Uint128};
 
-  use secret_dreamscape::contract::{handle, init, HandleMsg, InitMsg};
-  use secret_dreamscape::game_state::{Card, GameRound, Word};
-  use secret_dreamscape::query::{query, CanJoinResponse, GameState, QueryMsg};
-  use secret_dreamscape::utils::cards::get_score_for_word;
+  use secret_dreamscape::contract::{handle, HandleMsg};
 
   use crate::utils::*;
 
@@ -37,8 +31,8 @@ mod test {
     put_down_word(&mut deps, 0, vec![254, 251, 250, 4, 0, 3, 253, 252]); // billycan: 15
     let game_state_player0 = get_game_state(&mut deps, 0);
     let game_state_player1 = get_game_state(&mut deps, 1);
-    let game_state_player2 = get_game_state(&mut deps, 2);
-    let game_state_player3 = get_game_state(&mut deps, 3);
+    get_game_state(&mut deps, 2);
+    get_game_state(&mut deps, 3);
 
     let word_according_to_player0 = game_state_player0.words[0].clone();
     let word_according_to_player1 = game_state_player1.words[0].clone();

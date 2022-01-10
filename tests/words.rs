@@ -2,15 +2,9 @@ mod utils;
 
 #[cfg(test)]
 mod test {
-  use cosmwasm_std::testing::*;
-  use cosmwasm_std::{
-    from_binary, BankMsg, Coin, CosmosMsg, Extern, HandleResult, HumanAddr, InitResponse,
-    StdResult, Uint128,
-  };
+  use cosmwasm_std::{BankMsg, Coin, CosmosMsg, HumanAddr, Uint128};
 
-  use secret_dreamscape::contract::{handle, init, HandleMsg, InitMsg};
-  use secret_dreamscape::game_state::{Card, GameRound, Word};
-  use secret_dreamscape::query::{query, GameState, QueryMsg};
+  use secret_dreamscape::game_state::Card;
   use secret_dreamscape::utils::cards::get_score_for_word;
 
   use crate::utils::*;
@@ -158,7 +152,7 @@ mod test {
     match transfer_message {
       CosmosMsg::Bank(msg) => match msg {
         BankMsg::Send {
-          from_address,
+          from_address: _,
           to_address,
           amount,
         } => {

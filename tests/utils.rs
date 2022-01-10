@@ -2,7 +2,6 @@ use cosmwasm_std::testing::{mock_dependencies, mock_env, MockApi, MockQuerier, M
 use cosmwasm_std::{from_binary, Coin, Extern, HandleResult, InitResponse, StdResult, Uint128};
 
 use secret_dreamscape::contract::{handle, init, HandleMsg, InitMsg};
-use secret_dreamscape::game_state::Word;
 use secret_dreamscape::query::{query, CanJoinResponse, GameState, QueryMsg};
 
 fn init_without_password() -> (

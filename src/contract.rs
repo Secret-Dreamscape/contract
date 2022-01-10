@@ -203,7 +203,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       let non_folded_players = get_non_folded_players(&state);
 
       if state.game_board.words.len() == non_folded_players.len() {
-        let mut winners = get_winners_for_turn(&state);
+        let winners = get_winners_for_turn(&state);
 
         let mut winner_addresses = vec![];
 
