@@ -1,7 +1,6 @@
 use cosmwasm_std::Env;
 use lazy_static::lazy_static;
-use rand::prelude::SliceRandom;
-use rand::SeedableRng;
+use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaChaRng;
 use sha2::{Digest, Sha256};
 

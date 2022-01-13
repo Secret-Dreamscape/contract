@@ -2,15 +2,9 @@ mod utils;
 
 #[cfg(test)]
 mod test {
-  use cosmwasm_std::testing::*;
-  use cosmwasm_std::{
-    from_binary, BankMsg, Coin, CosmosMsg, Extern, HandleResult, HumanAddr, InitResponse,
-    StdResult, Uint128,
-  };
+  use cosmwasm_std::{BankMsg, Coin, CosmosMsg, HumanAddr, Uint128};
 
-  use secret_dreamscape::contract::{handle, init, HandleMsg, InitMsg};
-  use secret_dreamscape::game_state::{GameRound, PlayerAction};
-  use secret_dreamscape::query::{query, GameState, QueryMsg};
+  use secret_dreamscape::game_state::GameRound;
 
   use crate::utils::*;
 
@@ -218,7 +212,7 @@ mod test {
     send_bet(&mut deps, 2, Uint128(3_000_000));
     send_bet(&mut deps, 3, Uint128(4_000_000));
 
-    let game = get_game_state(&mut deps, 0);
+    let _game = get_game_state(&mut deps, 0);
     let bet = match_bet(&mut deps, 0, Uint128(2_000_000));
     assert!(
       bet.is_err(),
@@ -313,12 +307,12 @@ mod test {
       (CosmosMsg::Bank(msg1), CosmosMsg::Bank(msg2)) => match (msg1, msg2) {
         (
           BankMsg::Send {
-            from_address: from_address1,
+            from_address: _from_address1,
             to_address: to_address1,
             amount: amount1,
           },
           BankMsg::Send {
-            from_address: from_address2,
+            from_address: _from_address2,
             to_address: to_address2,
             amount: amount2,
           },

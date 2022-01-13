@@ -214,7 +214,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         }
 
         for i in 0..state.players.len() {
-          if winner_addresses.contains(&state.players[i].addr.clone()) && state.players[i].hp > 0 {
+          if !winner_addresses.contains(&state.players[i].addr.clone()) && state.players[i].hp > 0 {
             state.players[i].hp -= 1;
           }
           state.players[i].bet = 0;

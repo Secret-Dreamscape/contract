@@ -1,4 +1,4 @@
-use cosmwasm_std::{Api, Binary, Extern, HumanAddr, Querier, QueryResult, StdError, Storage};
+use cosmwasm_std::{to_binary, Api, Extern, HumanAddr, Querier, QueryResult, StdError, Storage};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json_wasm as serde_json;
@@ -171,9 +171,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
         return Err(StdError::generic_err(WAITING_FOR_PLAYERS));
       }
 
-      Ok(Binary(
-        serde_json::to_vec(&vec![state.winner.unwrap()]).unwrap(),
-      ))
+      to_binary(&vec![state.winner.unwrap()])
     }
     QueryMsg::CanJoin {} => {
       let state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
@@ -183,7 +181,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
         started_time: state.started_time,
         requires_password: state.password.is_some(),
       };
-      Ok(Binary(serde_json::to_vec(&resp).unwrap()))
+      Ok(to_binary(&resp).unwrap())
     }
     QueryMsg::GetGameState { secret } => {
       let saved_state: State =
@@ -210,7 +208,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
       get_words(&secret, &saved_state, &mut output_state)?;
       get_river(&saved_state, &mut output_state);
 
-      Ok(Binary(serde_json::to_vec(&output_state).unwrap()))
+      Ok(to_binary(&output_state).unwrap())
     }
   }
 }
