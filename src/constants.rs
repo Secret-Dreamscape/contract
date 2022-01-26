@@ -13,3 +13,5 @@ pub(crate) static WRONG_MATCHING_AMOUNT: &str = "You've sent the wrong bet amoun
 pub(crate) static CANT_BET_IF_FOLDED: &str = "You can't bet if you're folded.";
 pub(crate) static CANT_PUT_CARD_IF_FOLDED: &str = "You can't put down a card if you're folded.";
 pub(crate) static WRONG_PASSWORD: &str = "Wrong room password.";
+pub(crate) static CANT_CHECK_IF_NEED_TO_MATCH: &str =
+  "You can't check if you're in the matching round.";

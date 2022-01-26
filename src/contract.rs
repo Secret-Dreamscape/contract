@@ -10,8 +10,9 @@ use serde_json_wasm as serde_json;
 
 use crate::constants::{
   ALREADY_IN_GAME, ALREADY_PUT_DOWN, AT_LEAST_1SCRT, CANT_BET_IF_FOLDED,
-  CANT_PUT_CARD_AT_THE_MOMENT, CANT_PUT_CARD_IF_FOLDED, CANT_USE_CARD_TWICE, GAME_FULL,
-  NOT_IN_GAME, NOT_IN_YOUR_HAND, NO_NEXT_TURN, WRONG_MATCHING_AMOUNT, WRONG_PASSWORD,
+  CANT_CHECK_IF_NEED_TO_MATCH, CANT_PUT_CARD_AT_THE_MOMENT, CANT_PUT_CARD_IF_FOLDED,
+  CANT_USE_CARD_TWICE, GAME_FULL, NOT_IN_GAME, NOT_IN_YOUR_HAND, NO_NEXT_TURN,
+  WRONG_MATCHING_AMOUNT, WRONG_PASSWORD,
 };
 use crate::game_state::{Card, GameBoard, GameRound, Player, PlayerAction, State, Word};
 use crate::utils::cards::{generate_deck, get_n_cards, get_rng, get_score_for_word};
@@ -65,6 +66,8 @@ pub enum HandleMsg {
   Bet {},
   Match {},
   Fold {},
+  Check {},
+  Leave {},
   PutDownCard {
     indexes: Vec<u8>,
     opened_dictionary: bool,
@@ -114,6 +117,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         bet: 0,
         bet2: 0,
         folded: false,
+        checked: false,
+        checked2: false,
         opened_dictionary: false,
         last_action: None,
       });
@@ -257,7 +262,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           if state.players[i].folded {
             return Err(StdError::generic_err(CANT_BET_IF_FOLDED));
           }
-          let amount = env.message.sent_funds[0].amount.clone();
+          let amount = env.message.sent_funds[0].amount;
           state.players[i].last_action = Some(PlayerAction::SentBet(amount.u128() as u64));
           if state.game_board.round == GameRound::Blind {
             state.players[i].bet += amount.u128() as u64;
@@ -296,6 +301,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             state.players[i].bet = 0;
             state.players[i].bet2 = 0;
             state.players[i].folded = false;
+            state.players[i].checked = false;
+            state.players[i].checked2 = false;
             state.players[i].opened_dictionary = false;
             state.players[i].last_action = None;
             let mut new_hand = state.players[i].hand.clone();
@@ -358,8 +365,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     HandleMsg::Fold {} => {
       require_at_least_two_players(&mut state)?;
 
-      let _highest_bet = get_highest_bet(&state);
-
       for i in 0..state.players.len() {
         if state.players[i].addr == env.message.sender {
           state.players[i].folded = true;
@@ -371,6 +376,49 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       advance_turn_if_necessary(&mut state);
       let transfers = advance_to_next_turn_if_all_players_but_one_folded(&mut state, env);
 
+      deps
+        .storage
+        .set(b"state", &serde_json::to_vec(&state).unwrap());
+
+      send_transfers_if_any(transfers)
+    }
+    HandleMsg::Check {} => {
+      require_at_least_two_players(&mut state)?;
+
+      match state.game_board.round {
+        GameRound::Blind | GameRound::Flop => {
+          for i in 0..state.players.len() {
+            if state.players[i].addr == env.message.sender {
+              if state.game_board.round == GameRound::Blind {
+                state.players[i].checked = true;
+              } else {
+                state.players[i].checked2 = true;
+              }
+              state.players[i].last_action = Some(PlayerAction::Checked);
+            }
+          }
+        }
+        _ => return Err(StdError::generic_err(CANT_CHECK_IF_NEED_TO_MATCH)),
+      }
+
+      advance_turn_if_necessary(&mut state);
+      let transfers = advance_to_next_turn_if_all_players_but_one_folded(&mut state, env);
+      deps
+        .storage
+        .set(b"state", &serde_json::to_vec(&state).unwrap());
+
+      send_transfers_if_any(transfers)
+    }
+    HandleMsg::Leave {} => {
+      for i in 0..state.players.len() {
+        if state.players[i].addr == env.message.sender {
+          state.players.remove(i);
+          break;
+        }
+      }
+
+      advance_turn_if_necessary(&mut state);
+      let transfers = advance_to_next_turn_if_all_players_but_one_folded(&mut state, env);
       deps
         .storage
         .set(b"state", &serde_json::to_vec(&state).unwrap());
@@ -441,7 +489,7 @@ fn advance_to_next_turn_if_all_players_but_one_folded(
 
 fn get_bet_stats(state: &mut State) -> (bool, bool) {
   let mut last_bet = 0;
-  let mut all_non_folded_players_bet = true;
+  let mut all_non_folded_players_bet_or_checked = true;
   let mut all_players_bet_the_same_amount = true;
   for i in 0..state.players.len() {
     if !state.players[i].folded {
@@ -451,8 +499,16 @@ fn get_bet_stats(state: &mut State) -> (bool, bool) {
         GameRound::Flop | GameRound::Matching2 => state.players[i].bet2,
         GameRound::Choice => state.players[i].bet + state.players[i].bet2,
       };
+      let check_status = match state.game_board.round {
+        GameRound::Blind => state.players[i].checked,
+        GameRound::Flop => state.players[i].checked2,
+        _ => false,
+      };
+      if check_status {
+        continue;
+      }
       if player_bet == 0 {
-        all_non_folded_players_bet = false;
+        all_non_folded_players_bet_or_checked = false;
       } else if player_bet != last_bet {
         if last_bet != 0 {
           all_players_bet_the_same_amount = false;
@@ -461,7 +517,10 @@ fn get_bet_stats(state: &mut State) -> (bool, bool) {
       }
     }
   }
-  (all_non_folded_players_bet, all_players_bet_the_same_amount)
+  (
+    all_non_folded_players_bet_or_checked,
+    all_players_bet_the_same_amount,
+  )
 }
 
 fn advance_turn_if_necessary(state: &mut State) {
@@ -473,19 +532,21 @@ fn advance_turn_if_necessary(state: &mut State) {
       (true, true) => state.game_board.round = GameRound::Flop,
       _ => {}
     },
-    GameRound::Matching => match get_bet_stats(state) {
-      (true, true) => state.game_board.round = GameRound::Flop,
-      _ => {}
-    },
+    GameRound::Matching => {
+      if let (true, true) = get_bet_stats(state) {
+        state.game_board.round = GameRound::Flop
+      }
+    }
     GameRound::Flop => match get_bet_stats(state) {
       (true, false) => state.game_board.round = GameRound::Matching2,
       (true, true) => state.game_board.round = GameRound::Choice,
       _ => {}
     },
-    GameRound::Matching2 => match get_bet_stats(state) {
-      (true, true) => state.game_board.round = GameRound::Choice,
-      _ => {}
-    },
+    GameRound::Matching2 => {
+      if let (true, true) = get_bet_stats(state) {
+        state.game_board.round = GameRound::Choice
+      }
+    }
     GameRound::Choice => {}
   }
   if previous_round != state.game_board.round {

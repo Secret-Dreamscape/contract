@@ -21,6 +21,7 @@ pub enum PlayerAction {
   MatchedBet,
   Folded,
   ChoseWord,
+  Checked,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
@@ -32,6 +33,8 @@ pub struct Player {
   pub bet: u64,
   pub bet2: u64,
   pub folded: bool,
+  pub checked: bool,
+  pub checked2: bool,
   pub opened_dictionary: bool,
   pub last_action: Option<PlayerAction>,
 }
