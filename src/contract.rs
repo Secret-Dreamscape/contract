@@ -487,10 +487,26 @@ fn advance_to_next_turn_if_all_players_but_one_folded(
   transfers
 }
 
-fn get_bet_stats(state: &mut State) -> (bool, bool) {
+fn get_bet_stats(state: &mut State) -> (bool, bool, bool, bool, bool) {
   let mut last_bet = 0;
-  let mut all_non_folded_players_bet_or_checked = true;
+  let mut all_non_folded_players_bet = true;
   let mut all_players_bet_the_same_amount = true;
+  let at_least_one_player_checked = state.players.iter().any(|p| match state.game_board.round {
+    GameRound::Blind => p.checked,
+    GameRound::Flop => p.checked2,
+    _ => false,
+  });
+  let all_non_folded_players_checked =
+    state
+      .players
+      .iter()
+      .filter(|p| !p.folded)
+      .all(|p| match state.game_board.round {
+        GameRound::Blind => p.checked,
+        GameRound::Flop => p.checked2,
+        _ => false,
+      });
+  let all_players_acted = state.players.iter().all(|p| p.last_action.is_some());
   for i in 0..state.players.len() {
     if !state.players[i].folded {
       let player_bet = match state.game_board.round {
@@ -504,11 +520,11 @@ fn get_bet_stats(state: &mut State) -> (bool, bool) {
         GameRound::Flop => state.players[i].checked2,
         _ => false,
       };
-      if check_status {
-        continue;
-      }
       if player_bet == 0 {
-        all_non_folded_players_bet_or_checked = false;
+        if check_status {
+          continue;
+        }
+        all_non_folded_players_bet = false;
       } else if player_bet != last_bet {
         if last_bet != 0 {
           all_players_bet_the_same_amount = false;
@@ -518,39 +534,74 @@ fn get_bet_stats(state: &mut State) -> (bool, bool) {
     }
   }
   (
-    all_non_folded_players_bet_or_checked,
+    all_players_acted,
+    all_non_folded_players_bet,
     all_players_bet_the_same_amount,
+    at_least_one_player_checked,
+    all_non_folded_players_checked,
   )
 }
 
 fn advance_turn_if_necessary(state: &mut State) {
   let previous_round = state.game_board.round.clone();
-  match state.game_board.round {
-    GameRound::None => {}
-    GameRound::Blind => match get_bet_stats(state) {
-      (true, false) => state.game_board.round = GameRound::Matching,
-      (true, true) => state.game_board.round = GameRound::Flop,
+  let (
+    all_players_acted,
+    all_non_folded_players_bet,
+    all_players_bet_the_same_amount,
+    at_least_one_player_checked,
+    all_non_folded_players_checked,
+  ) = get_bet_stats(state);
+  if state.game_board.round != GameRound::Matching
+    && state.game_board.round != GameRound::Matching2
+    && !all_players_acted
+  {
+    return;
+  }
+  if all_non_folded_players_checked {
+    match state.game_board.round {
+      GameRound::Blind => state.game_board.round = GameRound::Flop,
+      GameRound::Flop => state.game_board.round = GameRound::Choice,
+      GameRound::Matching => state.game_board.round = GameRound::Flop,
+      GameRound::Matching2 => state.game_board.round = GameRound::Choice,
       _ => {}
-    },
-    GameRound::Matching => {
-      if let (true, true) = get_bet_stats(state) {
-        state.game_board.round = GameRound::Flop
-      }
     }
-    GameRound::Flop => match get_bet_stats(state) {
-      (true, false) => state.game_board.round = GameRound::Matching2,
-      (true, true) => state.game_board.round = GameRound::Choice,
+  } else if at_least_one_player_checked {
+    match state.game_board.round {
+      GameRound::Blind => state.game_board.round = GameRound::Matching,
+      GameRound::Flop => state.game_board.round = GameRound::Matching2,
       _ => {}
-    },
-    GameRound::Matching2 => {
-      if let (true, true) = get_bet_stats(state) {
-        state.game_board.round = GameRound::Choice
-      }
     }
-    GameRound::Choice => {}
+  } else {
+    match state.game_board.round {
+      GameRound::None => {}
+      GameRound::Blind => match (all_non_folded_players_bet, all_players_bet_the_same_amount) {
+        (true, false) => state.game_board.round = GameRound::Matching,
+        (true, true) => state.game_board.round = GameRound::Flop,
+        _ => {}
+      },
+      GameRound::Matching => {
+        if let (true, true) = (all_non_folded_players_bet, all_players_bet_the_same_amount) {
+          state.game_board.round = GameRound::Flop
+        }
+      }
+      GameRound::Flop => match (all_non_folded_players_bet, all_players_bet_the_same_amount) {
+        (true, false) => state.game_board.round = GameRound::Matching2,
+        (true, true) => state.game_board.round = GameRound::Choice,
+        _ => {}
+      },
+      GameRound::Matching2 => {
+        if let (true, true) = (all_non_folded_players_bet, all_players_bet_the_same_amount) {
+          state.game_board.round = GameRound::Choice
+        }
+      }
+      GameRound::Choice => {}
+    }
   }
   if previous_round != state.game_board.round {
     for i in 0..state.players.len() {
+      if state.players[i].folded {
+        continue;
+      }
       state.players[i].last_action = None;
     }
   }
