@@ -57,6 +57,7 @@ pub struct PlayerStatus {
   folded: bool,
   pub last_action: Option<PlayerAction>,
   opened_dictionary: bool,
+  chips: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
@@ -83,6 +84,7 @@ fn get_stats_for_players(saved_state: &State, output_state: &mut GameState) {
       folded: player.folded,
       last_action: player.clone().last_action,
       opened_dictionary: player.clone().opened_dictionary,
+      chips: player.clone().chips,
     })
   }
 }

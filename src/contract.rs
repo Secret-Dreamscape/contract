@@ -195,7 +195,11 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         checked: false,
         checked2: false,
         opened_dictionary: false,
-        last_action: Some(PlayerAction::Folded),
+        last_action: if state.players.len() > 1 {
+          Some(PlayerAction::Folded)
+        } else {
+          None
+        },
         nfts,
         chips: 0,
       });
@@ -225,7 +229,41 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       Ok(HandleResponse::default())
     }
     HandleMsg::BuyChips {} => {
-      //
+      get_requesting_player(&deps, env.clone())?;
+      if env.message.sent_funds.len() != 1 {
+        return Err(StdError::generic_err(
+          "You can only send SCRT to this function",
+        ));
+      }
+      if env.message.sent_funds[0].denom != "uscrt" {
+        return Err(StdError::generic_err(
+          "You can only send SCRT to this function",
+        ));
+      }
+
+      let amount = env.message.sent_funds[0].amount.u128() as u64;
+
+      if amount < state.min_buy || amount > state.max_buy {
+        return Err(StdError::generic_err(
+          "You didn't send enough SCRT to this function or you sent too much",
+        ));
+      }
+
+      for i in 0..state.players.len() {
+        if state.players[i].addr == env.message.sender {
+          if state.players[i].chips + amount > state.max_buy {
+            return Err(StdError::generic_err(
+              "You can't buy more chips than the maximum amount",
+            ));
+          }
+          state.players[i].chips += amount;
+        }
+      }
+
+      deps
+        .storage
+        .set(b"state", &serde_json::to_vec(&state).unwrap());
+
       Ok(HandleResponse::default())
     }
     HandleMsg::PutDownCard {
@@ -523,11 +561,13 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 
       advance_turn_if_necessary(&mut state);
       let mut messages = advance_to_next_turn_if_all_players_but_one_folded(&mut state)?;
-      messages.push(CosmosMsg::Bank(BankMsg::Send {
-        from_address: env.contract.address.clone(),
-        to_address: env.message.sender.clone(),
-        amount: vec![Coin::new(chips as u128, "uscrt")],
-      }));
+      if chips > 0 {
+        messages.push(CosmosMsg::Bank(BankMsg::Send {
+          from_address: env.contract.address.clone(),
+          to_address: env.message.sender.clone(),
+          amount: vec![Coin::new(chips as u128, "uscrt")],
+        }));
+      }
       deps
         .storage
         .set(b"state", &serde_json::to_vec(&state).unwrap());
