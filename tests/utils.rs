@@ -11,7 +11,11 @@ fn init_without_password() -> (
   let mut deps = mock_dependencies(20, &[]);
   let env = mock_env("player0", &[]);
 
+  let stamp_addr = mock_env("stamp", &[]);
+
   let init_msg = InitMsg {
+    stamp_addr: stamp_addr.contract.address.clone(),
+    stamp_hash: stamp_addr.contract_code_hash,
     bg: 0,
     password: None,
   };
@@ -26,7 +30,11 @@ fn init_with_password() -> (
   let mut deps = mock_dependencies(20, &[]);
   let env = mock_env("player0", &[]);
 
+  let stamp_addr = mock_env("stamp", &[]);
+
   let init_msg = InitMsg {
+    stamp_addr: stamp_addr.contract.address.clone(),
+    stamp_hash: stamp_addr.contract_code_hash,
     bg: 0,
     password: Some("correct password".to_string()),
   };
@@ -77,6 +85,7 @@ pub fn init_with_n_players(
       &mut deps,
       player_env,
       HandleMsg::Join {
+        nfts: vec![],
         secret: i,
         password: if private { "correct password" } else { "" }.to_string(),
       },

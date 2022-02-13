@@ -5,14 +5,14 @@ use cosmwasm_std::{
   InitResponse, InitResult, Querier, StdError, StdResult, Storage, Uint128,
 };
 use schemars::JsonSchema;
+use secret_toolkit::utils::HandleCallback;
 use serde::{Deserialize, Serialize};
 use serde_json_wasm as serde_json;
 
 use crate::constants::{
-  ALREADY_IN_GAME, ALREADY_PUT_DOWN, AT_LEAST_1SCRT, CANT_BET_IF_FOLDED,
-  CANT_CHECK_IF_NEED_TO_MATCH, CANT_PUT_CARD_AT_THE_MOMENT, CANT_PUT_CARD_IF_FOLDED,
-  CANT_USE_CARD_TWICE, GAME_FULL, NOT_IN_GAME, NOT_IN_YOUR_HAND, NO_NEXT_TURN,
-  WRONG_MATCHING_AMOUNT, WRONG_PASSWORD,
+  ALREADY_IN_GAME, ALREADY_PUT_DOWN, CANT_BET_IF_FOLDED, CANT_CHECK_IF_NEED_TO_MATCH,
+  CANT_PUT_CARD_AT_THE_MOMENT, CANT_PUT_CARD_IF_FOLDED, CANT_USE_CARD_TWICE, GAME_FULL,
+  NOT_IN_GAME, NOT_IN_YOUR_HAND, NO_NEXT_TURN, WRONG_MATCHING_AMOUNT, WRONG_PASSWORD,
 };
 use crate::game_state::{Card, GameBoard, GameRound, Player, PlayerAction, State, Word};
 use crate::utils::cards::{generate_deck, get_n_cards, get_rng, get_score_for_word};
@@ -23,6 +23,30 @@ use crate::utils::general::get_non_folded_players;
 pub struct InitMsg {
   pub bg: u64,
   pub password: Option<String>,
+  pub label: String,
+  pub stamp_addr: HumanAddr,
+  pub stamp_hash: String,
+  pub callback_addr: HumanAddr,
+  pub callback_hash: String,
+  pub min_buy: u64,
+  pub max_buy: u64,
+  pub jackpot_addr: HumanAddr,
+  pub jackpot_hash: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PhonebookHandleMsg {
+  RegisteredCallback {
+    address: HumanAddr,
+    private: bool,
+    label: String,
+    referrer: String,
+  },
+}
+
+impl HandleCallback for PhonebookHandleMsg {
+  const BLOCK_SIZE: usize = 256;
 }
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
@@ -41,19 +65,57 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
       river: vec![],
       pool: 0,
       turn: 0,
+      rake_percentage: 10,
     },
     deck: vec![],
     can_join: true,
     started_time: block_time,
     level_design: msg.bg,
-    password: msg.password,
+    password: msg.password.clone(),
+    stamp_hash: msg.stamp_hash.clone(),
+    stamp_addr: msg.stamp_addr,
+    min_buy: msg.min_buy,
+    max_buy: msg.max_buy,
+    jackpot_addr: msg.jackpot_addr,
+    jackpot_hash: msg.jackpot_hash,
   };
+
+  let callback_msg = PhonebookHandleMsg::RegisteredCallback {
+    address: env.contract.address.clone(),
+    private: msg.password.is_some(),
+    label: msg.label.clone(),
+    referrer: msg.callback_hash.clone(),
+  };
+
+  let cosmos_msg =
+    callback_msg.to_cosmos_msg(msg.callback_hash.clone(), msg.callback_addr.clone(), None)?;
 
   deps
     .storage
     .set(b"state", &serde_json::to_vec(&state).unwrap());
 
-  Ok(InitResponse::default())
+  Ok(InitResponse {
+    messages: vec![cosmos_msg],
+    log: vec![],
+  })
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct SecretDreamscapeNFT {
+  pub id: String,
+  pub letter: String,
+  pub gold: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SecretDreamscapeJackpot {
+  Fund {},
+}
+
+impl HandleCallback for SecretDreamscapeJackpot {
+  const BLOCK_SIZE: usize = 256;
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
@@ -62,9 +124,15 @@ pub enum HandleMsg {
   Join {
     secret: u64,
     password: String,
+    nfts: Vec<SecretDreamscapeNFT>,
   },
-  Bet {},
-  Match {},
+  BuyChips {},
+  Bet {
+    amount: u64,
+  },
+  Match {
+    amount: u64,
+  },
   Fold {},
   Check {},
   Leave {},
@@ -73,6 +141,16 @@ pub enum HandleMsg {
     opened_dictionary: bool,
   },
   RequestNextTurn {},
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StampHandleMsg {
+  Stamp { nft_id: String, word_id: u16 },
+}
+
+impl HandleCallback for StampHandleMsg {
+  const BLOCK_SIZE: usize = 256;
 }
 
 pub fn handle<S: Storage, A: Api, Q: Querier>(
@@ -85,14 +163,11 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     return Err(StdError::generic_err("Game is over"));
   }
   match msg {
-    HandleMsg::Join { secret, password } => {
-      if env.message.sent_funds.len() != 1
-        || env.message.sent_funds[0].amount != Uint128(1_000_000)
-        || env.message.sent_funds[0].denom != *"uscrt"
-      {
-        return Err(StdError::generic_err(AT_LEAST_1SCRT));
-      }
-
+    HandleMsg::Join {
+      secret,
+      password,
+      nfts,
+    } => {
       if let Some(ref pass) = state.password {
         if &password != pass {
           return Err(StdError::generic_err(WRONG_PASSWORD));
@@ -116,11 +191,13 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         hp: 5,
         bet: 0,
         bet2: 0,
-        folded: false,
+        folded: state.players.len() > 1,
         checked: false,
         checked2: false,
         opened_dictionary: false,
-        last_action: None,
+        last_action: Some(PlayerAction::Folded),
+        nfts,
+        chips: 0,
       });
 
       if state.players.len() == 2 {
@@ -145,6 +222,10 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       deps
         .storage
         .set(b"state", &serde_json::to_vec(&state).unwrap());
+      Ok(HandleResponse::default())
+    }
+    HandleMsg::BuyChips {} => {
+      //
       Ok(HandleResponse::default())
     }
     HandleMsg::PutDownCard {
@@ -183,11 +264,27 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         });
         indexes_used.push(*index);
       }
-      let mut transfers: Vec<CosmosMsg> = vec![];
+      let mut messages: Vec<CosmosMsg> = vec![];
       let mut new_hand: Vec<Card> = vec![];
       for i in 0..requester.hand.len() {
         if !indexes.contains(&(i as u8)) {
           new_hand.push(requester.hand[i].clone());
+        }
+      }
+      for i in 0..word.len() {
+        let card = word[i].clone();
+        for j in 0..requester.nfts.len() {
+          let letter = ('A' as u8 + card.letter as u8).to_string();
+          let nft = requester.nfts[j].clone();
+          if nft.letter == letter && nft.gold == card.gold {
+            let message = StampHandleMsg::Stamp {
+              nft_id: nft.clone().id,
+              word_id: state.game_board.words.len() as u16,
+            };
+            let cosmos_msg =
+              message.to_cosmos_msg(state.stamp_hash.clone(), state.stamp_addr.clone(), None)?;
+            messages.push(cosmos_msg);
+          }
         }
       }
 
@@ -210,65 +307,69 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       if state.game_board.words.len() == non_folded_players.len() {
         let winners = get_winners_for_turn(&state);
 
-        let mut winner_addresses = vec![];
+        let mut winner_indexes: Vec<usize> = vec![];
+
+        for i in 0..winners.len() {
+          for j in 0..state.players.len() {
+            if state.players[j].addr == winners[i].player_addr {
+              winner_indexes.push(j);
+              break;
+            }
+          }
+        }
 
         state.game_board.winner_for_turn = Some(winners[0].clone().player_addr);
 
-        for i in 0..winners.len() {
-          winner_addresses.push(winners[i].player_addr.clone());
-        }
-
         for i in 0..state.players.len() {
-          if !winner_addresses.contains(&state.players[i].addr.clone()) && state.players[i].hp > 0 {
-            state.players[i].hp -= 1;
-          }
+          // if !winner_addresses.contains(&state.players[i].addr.clone()) && state.players[i].hp > 0 {
+          //  state.players[i].hp -= 1;
+          // }
           state.players[i].bet = 0;
           state.players[i].bet2 = 0;
         }
 
-        give_winners_their_money(
-          &mut state,
-          &mut transfers,
-          env.contract.address,
-          winner_addresses,
-        );
+        give_winners_their_money(&mut state, winner_indexes)?;
       }
 
       deps
         .storage
         .set(b"state", &serde_json::to_vec(&state).unwrap());
-      send_transfers_if_any(transfers)
+      send_messages_if_any(messages)
     }
-    HandleMsg::Bet {} => {
+    HandleMsg::Bet { amount } => {
       require_at_least_two_players(&mut state)?;
 
-      if env.message.sent_funds.len() != 1 {
-        return Err(StdError::generic_err("Didn't get any funds"));
+      let player = get_requesting_player(&deps, env.clone())?;
+
+      if player.folded {
+        return Err(StdError::generic_err(CANT_BET_IF_FOLDED));
       }
-      if env.message.sent_funds[0].amount < Uint128(1_000_000) {
-        return Err(StdError::generic_err("Less than 1scrt"));
+
+      if amount < 125_000 {
+        return Err(StdError::generic_err("Less than 0.125scrt"));
       }
-      if env.message.sent_funds[0].denom != *"uscrt" {
-        return Err(StdError::generic_err("Not sending any scrt"));
+
+      if player.chips < amount {
+        return Err(StdError::generic_err("Not enough chips"));
       }
+
       if state.game_board.round != GameRound::Blind && state.game_board.round != GameRound::Flop {
         return Err(StdError::generic_err("You can't bet anything now"));
       }
 
-      get_requesting_player(&deps, env.clone())?;
-      state.game_board.pool += env.message.sent_funds[0].amount.clone().u128() as u64;
+      state.game_board.pool += amount;
       for i in 0..state.players.len() {
         if state.players[i].addr == env.message.sender {
           if state.players[i].folded {
             return Err(StdError::generic_err(CANT_BET_IF_FOLDED));
           }
-          let amount = env.message.sent_funds[0].amount;
-          state.players[i].last_action = Some(PlayerAction::SentBet(amount.u128() as u64));
+          state.players[i].last_action = Some(PlayerAction::SentBet(amount));
           if state.game_board.round == GameRound::Blind {
-            state.players[i].bet += amount.u128() as u64;
+            state.players[i].bet += amount;
           } else {
-            state.players[i].bet2 += amount.u128() as u64;
+            state.players[i].bet2 += amount;
           }
+          state.players[i].chips -= amount;
         }
       }
 
@@ -320,36 +421,37 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 
       Ok(HandleResponse::default())
     }
-    HandleMsg::Match {} => {
+    HandleMsg::Match { amount } => {
       require_at_least_two_players(&mut state)?;
 
       let highest_bet = get_highest_bet(&state);
 
-      if env.message.sent_funds.len() != 1 {
-        return Err(StdError::generic_err("Didn't get any funds"));
+      let player = get_requesting_player(&deps, env.clone())?;
+
+      if player.folded {
+        return Err(StdError::generic_err(CANT_BET_IF_FOLDED));
       }
-      if env.message.sent_funds[0].denom != *"uscrt" {
-        return Err(StdError::generic_err("Not sending any scrt"));
+
+      if player.chips < amount {
+        return Err(StdError::generic_err("Not enough chips"));
       }
+
       for i in 0..state.players.len() {
         if state.players[i].addr == env.message.sender {
           if state.game_board.round == GameRound::Matching {
-            if env.message.sent_funds[0].amount
-              < Uint128((highest_bet - state.players[i].bet) as u128)
-            {
+            if amount < (highest_bet - state.players[i].bet) {
               return Err(StdError::generic_err(WRONG_MATCHING_AMOUNT));
             }
             state.game_board.pool += highest_bet - state.players[i].bet;
             state.players[i].bet = highest_bet;
           } else {
-            if env.message.sent_funds[0].amount
-              < Uint128((highest_bet - state.players[i].bet2) as u128)
-            {
+            if amount < (highest_bet - state.players[i].bet2) {
               return Err(StdError::generic_err(WRONG_MATCHING_AMOUNT));
             }
             state.game_board.pool += highest_bet - state.players[i].bet2;
             state.players[i].bet2 = highest_bet;
           }
+          state.players[i].chips -= amount;
           state.players[i].last_action = Some(PlayerAction::MatchedBet);
         }
       }
@@ -374,13 +476,13 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       }
 
       advance_turn_if_necessary(&mut state);
-      let transfers = advance_to_next_turn_if_all_players_but_one_folded(&mut state, env);
+      let messages = advance_to_next_turn_if_all_players_but_one_folded(&mut state)?;
 
       deps
         .storage
         .set(b"state", &serde_json::to_vec(&state).unwrap());
 
-      send_transfers_if_any(transfers)
+      send_messages_if_any(messages)
     }
     HandleMsg::Check {} => {
       require_at_least_two_players(&mut state)?;
@@ -402,36 +504,43 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       }
 
       advance_turn_if_necessary(&mut state);
-      let transfers = advance_to_next_turn_if_all_players_but_one_folded(&mut state, env);
+      let messages = advance_to_next_turn_if_all_players_but_one_folded(&mut state)?;
       deps
         .storage
         .set(b"state", &serde_json::to_vec(&state).unwrap());
 
-      send_transfers_if_any(transfers)
+      send_messages_if_any(messages)
     }
     HandleMsg::Leave {} => {
+      let mut chips: u64 = 0;
       for i in 0..state.players.len() {
         if state.players[i].addr == env.message.sender {
+          chips = state.players[i].chips;
           state.players.remove(i);
           break;
         }
       }
 
       advance_turn_if_necessary(&mut state);
-      let transfers = advance_to_next_turn_if_all_players_but_one_folded(&mut state, env);
+      let mut messages = advance_to_next_turn_if_all_players_but_one_folded(&mut state)?;
+      messages.push(CosmosMsg::Bank(BankMsg::Send {
+        from_address: env.contract.address.clone(),
+        to_address: env.message.sender.clone(),
+        amount: vec![Coin::new(chips as u128, "uscrt")],
+      }));
       deps
         .storage
         .set(b"state", &serde_json::to_vec(&state).unwrap());
 
-      send_transfers_if_any(transfers)
+      send_messages_if_any(messages)
     }
   }
 }
 
-fn send_transfers_if_any(transfers: Vec<CosmosMsg>) -> Result<HandleResponse, StdError> {
-  if !transfers.is_empty() {
+fn send_messages_if_any(messages: Vec<CosmosMsg>) -> Result<HandleResponse, StdError> {
+  if !messages.is_empty() {
     Ok(HandleResponse {
-      messages: transfers,
+      messages,
       log: vec![],
       data: None,
     })
@@ -442,22 +551,23 @@ fn send_transfers_if_any(transfers: Vec<CosmosMsg>) -> Result<HandleResponse, St
 
 fn give_winners_their_money(
   mut state: &mut State,
-  transfers: &mut Vec<CosmosMsg>,
-  contract_addr: HumanAddr,
-  winners: Vec<HumanAddr>,
-) {
-  state.game_board.winner_for_turn = Some(winners[0].clone());
-  let amount_per_transfer = (state.game_board.pool as u128) / (winners.len() as u128);
+  winners: Vec<usize>,
+) -> Result<Vec<CosmosMsg>, StdError> {
+  state.game_board.winner_for_turn = Some(state.players[winners[0]].addr.clone());
+  let rake = state.game_board.pool * state.game_board.rake_percentage / 100;
+  let amount_per_transfer = (state.game_board.pool - rake) / (winners.len() as u64);
   if state.game_board.pool > 0 {
     for i in 0..winners.len() {
-      transfers.push(CosmosMsg::Bank(BankMsg::Send {
-        from_address: contract_addr.clone(),
-        to_address: winners[i].clone(),
-        amount: vec![Coin::new(amount_per_transfer, "uscrt")],
-      }));
+      state.players[winners[i]].chips += amount_per_transfer;
     }
     state.game_board.pool = 0;
   }
+  let msg = SecretDreamscapeJackpot::Fund {}.to_cosmos_msg(
+    state.jackpot_hash.clone(),
+    state.jackpot_addr.clone(),
+    Some(Uint128(rake as u128)),
+  )?;
+  return Ok(vec![msg]);
 }
 
 fn get_highest_bet(state: &State) -> u64 {
@@ -476,15 +586,14 @@ fn get_highest_bet(state: &State) -> u64 {
 
 fn advance_to_next_turn_if_all_players_but_one_folded(
   state: &mut State,
-  env: Env,
-) -> Vec<CosmosMsg> {
-  let mut transfers: Vec<CosmosMsg> = vec![];
+) -> Result<Vec<CosmosMsg>, StdError> {
   let non_folded = get_non_folded_players(state);
   if non_folded.len() == 1 {
     let winner = non_folded[0].clone().addr;
-    give_winners_their_money(state, &mut transfers, env.contract.address, vec![winner])
+    let non_folded_index = state.players.iter().position(|p| p.addr == winner).unwrap();
+    return give_winners_their_money(state, vec![non_folded_index]);
   }
-  transfers
+  Ok(vec![])
 }
 
 fn get_bet_stats(state: &mut State) -> (bool, bool, bool, bool, bool) {

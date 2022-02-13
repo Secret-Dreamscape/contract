@@ -2,6 +2,8 @@ use cosmwasm_std::HumanAddr;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::contract::SecretDreamscapeNFT;
+
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 pub struct State {
   pub players: Vec<Player>,
@@ -13,6 +15,13 @@ pub struct State {
   pub started_time: u64,
   pub level_design: u64,
   pub password: Option<String>,
+  pub stamp_hash: String,
+  pub stamp_addr: HumanAddr,
+
+  pub min_buy: u64,
+  pub max_buy: u64,
+  pub jackpot_addr: HumanAddr,
+  pub jackpot_hash: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema, PartialEq)]
@@ -37,6 +46,8 @@ pub struct Player {
   pub checked2: bool,
   pub opened_dictionary: bool,
   pub last_action: Option<PlayerAction>,
+  pub nfts: Vec<SecretDreamscapeNFT>,
+  pub chips: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
@@ -53,6 +64,7 @@ pub struct GameBoard {
   pub words: Vec<Word>,
   pub river: Vec<Card>,
   pub pool: u64,
+  pub rake_percentage: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]

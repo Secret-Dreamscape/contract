@@ -1,6 +1,5 @@
 pub(crate) static NOT_IN_GAME: &str = "You are not in the game";
 pub(crate) static NO_NEXT_TURN: &str = "You can't advance to the next turn yet";
-pub(crate) static AT_LEAST_1SCRT: &str = "Deposit at least 1 SCRT.";
 pub(crate) static GAME_FULL: &str = "Game is full.";
 pub(crate) static WAITING_FOR_PLAYERS: &str = "Still waiting for players.";
 pub(crate) static NOT_IN_YOUR_HAND: &str = "You cannot place a card that's not in your hand";

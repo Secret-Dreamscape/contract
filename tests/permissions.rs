@@ -171,6 +171,7 @@ mod test {
       &mut deps,
       p2,
       HandleMsg::Join {
+        nfts: vec![],
         secret: 2,
         password: "".to_string(),
       },
@@ -198,6 +199,7 @@ mod test {
       &mut deps,
       p4,
       HandleMsg::Join {
+        nfts: vec![],
         secret: 4,
         password: "".to_string(),
       },
@@ -257,6 +259,7 @@ mod test {
       &mut deps,
       p2.clone(),
       HandleMsg::Join {
+        nfts: vec![],
         secret: 4,
         password: "wrong password".to_string(),
       },
@@ -269,6 +272,7 @@ mod test {
       &mut deps,
       p2.clone(),
       HandleMsg::Join {
+        nfts: vec![],
         secret: 4,
         password: "correct password".to_string(),
       },
