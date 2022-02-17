@@ -283,10 +283,13 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::generic_err(CANT_PUT_CARD_IF_FOLDED));
       }
 
-      for i in 0..state.game_board.words.len() {
-        if state.game_board.words[i].player_addr == requester.addr {
-          return Err(StdError::generic_err(ALREADY_PUT_DOWN));
-        }
+      if state
+        .game_board
+        .words
+        .iter()
+        .any(|w| w.player_addr == requester.addr)
+      {
+        return Err(StdError::generic_err(ALREADY_PUT_DOWN));
       }
 
       let mut indexes_used: Vec<u8> = vec![];
@@ -313,28 +316,25 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           new_hand.push(requester.hand[i].clone());
         }
       }
-      let word_string: String = word
-        .iter()
-        .map(|c| ('A' as u8 + c.letter) as char)
-        .collect::<Vec<char>>()
-        .into_iter()
-        .collect();
+      let mut word_string: String = "".to_string();
+      let word_id = find_word_id(word_string.as_str()).unwrap_or(0);
       for i in 0..word.len() {
         let card = word[i].clone();
-        for j in 0..requester.nfts.len() {
-          let letter = (('A' as u8 + card.letter as u8) as char).to_string();
-          let nft = requester.nfts[j].clone();
-          if nft.letter == letter && nft.gold == card.gold {
-            let word_id = find_word_id(word_string.as_str()).unwrap_or(0);
-            let message = StampHandleMsg::Stamp {
-              nft_id: nft.clone().id,
-              word_id: word_id as u16,
-              callee: env.clone().message.sender,
-            };
-            let cosmos_msg =
-              message.to_cosmos_msg(state.stamp_hash.clone(), state.stamp_addr.clone(), None)?;
-            messages.push(cosmos_msg);
-          }
+        let letter = ('A' as u8 + card.letter) as char;
+        word_string.push(letter);
+        let nft_for_card = requester
+          .nfts
+          .iter()
+          .find(|nft| nft.letter == letter.to_string() && nft.gold == card.gold);
+        if let Some(nft) = nft_for_card {
+          let message = StampHandleMsg::Stamp {
+            nft_id: nft.clone().id,
+            word_id: word_id as u16,
+            callee: env.clone().message.sender,
+          };
+          let cosmos_msg =
+            message.to_cosmos_msg(state.stamp_hash.clone(), state.stamp_addr.clone(), None)?;
+          messages.push(cosmos_msg);
         }
       }
 
