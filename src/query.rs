@@ -38,6 +38,8 @@ pub struct GameState {
   pub words: Vec<WordView>,
   pub winner: Option<HumanAddr>,
   pub level_design: u64,
+  pub min_buy: u64,
+  pub max_buy: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
@@ -203,6 +205,8 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
         players: vec![],
         hand: vec![],
         level_design: saved_state.level_design,
+        min_buy: saved_state.min_buy,
+        max_buy: saved_state.max_buy,
       };
 
       get_stats_for_players(&saved_state, &mut output_state);

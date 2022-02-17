@@ -15,7 +15,7 @@ use crate::constants::{
   NOT_IN_GAME, NOT_IN_YOUR_HAND, NO_NEXT_TURN, WRONG_MATCHING_AMOUNT, WRONG_PASSWORD,
 };
 use crate::game_state::{Card, GameBoard, GameRound, Player, PlayerAction, State, Word};
-use crate::utils::cards::{generate_deck, get_n_cards, get_rng, get_score_for_word};
+use crate::utils::cards::{find_word_id, generate_deck, get_n_cards, get_rng, get_score_for_word};
 use crate::utils::general::get_non_folded_players;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
@@ -146,7 +146,11 @@ pub enum HandleMsg {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum StampHandleMsg {
-  Stamp { nft_id: String, word_id: u16 },
+  Stamp {
+    nft_id: String,
+    word_id: u16,
+    callee: HumanAddr,
+  },
 }
 
 impl HandleCallback for StampHandleMsg {
@@ -309,15 +313,23 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           new_hand.push(requester.hand[i].clone());
         }
       }
+      let word_string: String = word
+        .iter()
+        .map(|c| ('A' as u8 + c.letter) as char)
+        .collect::<Vec<char>>()
+        .into_iter()
+        .collect();
       for i in 0..word.len() {
         let card = word[i].clone();
         for j in 0..requester.nfts.len() {
-          let letter = ('A' as u8 + card.letter as u8).to_string();
+          let letter = (('A' as u8 + card.letter as u8) as char).to_string();
           let nft = requester.nfts[j].clone();
           if nft.letter == letter && nft.gold == card.gold {
+            let word_id = find_word_id(word_string.as_str()).unwrap_or(0);
             let message = StampHandleMsg::Stamp {
               nft_id: nft.clone().id,
-              word_id: state.game_board.words.len() as u16,
+              word_id: word_id as u16,
+              callee: env.clone().message.sender,
             };
             let cosmos_msg =
               message.to_cosmos_msg(state.stamp_hash.clone(), state.stamp_addr.clone(), None)?;
@@ -366,7 +378,10 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           state.players[i].bet2 = 0;
         }
 
-        give_winners_their_money(&mut state, winner_indexes)?;
+        let transfers = give_winners_their_money(&mut state, winner_indexes)?;
+        for t in transfers {
+          messages.push(t.clone());
+        }
       }
 
       deps
@@ -384,7 +399,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       }
 
       if amount < 125_000 {
-        return Err(StdError::generic_err("Less than 0.125scrt"));
+        return Err(StdError::generic_err("Less than  0.125scrt"));
       }
 
       if player.chips < amount {
@@ -439,11 +454,16 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
           for i in 0..state.players.len() {
             state.players[i].bet = 0;
             state.players[i].bet2 = 0;
-            state.players[i].folded = false;
+            if state.players[i].chips < 125_000 {
+              state.players[i].folded = true;
+              state.players[i].last_action = Some(PlayerAction::Folded);
+            } else {
+              state.players[i].folded = false;
+              state.players[i].last_action = None;
+            }
             state.players[i].checked = false;
             state.players[i].checked2 = false;
             state.players[i].opened_dictionary = false;
-            state.players[i].last_action = None;
             let mut new_hand = state.players[i].hand.clone();
             if new_hand.len() < 5 {
               let count: u8 = 5 - new_hand.len() as u8;
@@ -601,13 +621,14 @@ fn give_winners_their_money(
       state.players[winners[i]].chips += amount_per_transfer;
     }
     state.game_board.pool = 0;
+    let msg = SecretDreamscapeJackpot::Fund {}.to_cosmos_msg(
+      state.jackpot_hash.clone(),
+      state.jackpot_addr.clone(),
+      Some(Uint128(rake as u128)),
+    )?;
+    return Ok(vec![msg]);
   }
-  let msg = SecretDreamscapeJackpot::Fund {}.to_cosmos_msg(
-    state.jackpot_hash.clone(),
-    state.jackpot_addr.clone(),
-    Some(Uint128(rake as u128)),
-  )?;
-  return Ok(vec![msg]);
+  return Ok(vec![]);
 }
 
 fn get_highest_bet(state: &State) -> u64 {
