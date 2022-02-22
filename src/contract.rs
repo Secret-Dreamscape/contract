@@ -817,18 +817,12 @@ fn require_at_least_two_players(state: &mut State) -> StdResult<bool> {
   Ok(true)
 }
 
-pub(crate) fn get_requesting_player<S: Storage, A: Api, Q: Querier>(
-  deps: &&mut Extern<S, A, Q>,
-  env: Env,
-) -> Result<Player, StdError> {
-  let state: State = serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
-
-  for player in &state.players {
-    if player.addr == env.message.sender {
-      return Ok(player.clone());
+pub(crate) fn get_requesting_player(state: &State, env: Env) -> Result<Player, StdError> {
+  let player = state.players.iter().find(|p| p.addr == env.message.sender);
+  match player {
+    Some(p) => Ok(p.clone()),
+    None => Err(StdError::generic_err(NOT_IN_GAME)),
     }
-  }
-  Err(StdError::generic_err(NOT_IN_GAME))
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
