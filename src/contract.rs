@@ -440,11 +440,11 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       match state.game_board.winner_for_turn {
         None => return Err(StdError::generic_err(NO_NEXT_TURN)),
         Some(ref _winner) => {
-          let zero_count = state.players.iter().filter(|&p| p.hp == 0).count();
-          if state.players.len() == (zero_count + 1) {
-            // if there's a winner
-            state.winner = state.game_board.winner_for_turn.clone();
-          }
+          // let zero_count = state.players.iter().filter(|&p| p.hp == 0).count();
+          // if state.players.len() == (zero_count + 1) {
+          //   // if there's a winner
+          //   state.winner = state.game_board.winner_for_turn.clone();
+          // }
           state.game_board.turn += 1;
           state.game_board.winner_for_turn = None;
           state.game_board.words = vec![];
