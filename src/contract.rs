@@ -632,17 +632,29 @@ fn give_winners_their_money(
 }
 
 fn get_highest_bet(state: &State) -> u64 {
-  let mut highest_bet = 0;
-  for player in &state.players {
-    if state.game_board.round == GameRound::Matching {
-      if player.bet > highest_bet {
-        highest_bet = player.clone().bet;
-      }
-    } else if player.bet2 > highest_bet {
-      highest_bet = player.clone().bet2;
-    }
+  if state.game_board.round == GameRound::Matching {
+    state.players.iter().fold(
+      0,
+      |acc, player| {
+        if player.bet > acc {
+          player.bet
+        } else {
+          acc
+        }
+      },
+    )
+  } else {
+    state.players.iter().fold(
+      0,
+      |acc, player| {
+        if player.bet2 > acc {
+          player.bet2
+        } else {
+          acc
+        }
+      },
+    )
   }
-  highest_bet
 }
 
 fn advance_to_next_turn_if_all_players_but_one_folded(
