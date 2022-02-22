@@ -93,3 +93,37 @@ pub enum GameRound {
   // players choose a word to play
   Choice,
 }
+
+#[derive(Serialize, Deserialize, Clone, JsonSchema, PartialEq)]
+pub(crate) enum GameRoundFamily {
+  // turn not started yet, initial state
+  // Family games are minimum stakes (play for fun) - don't allow dictionary
+  None,
+
+  // Community cards are not shown and every player must either bet or check
+  PreFlop,
+
+  // If one player had a larger bet than the others, then all other players must either match or fold
+  Matching,
+
+  // 1st 3 Community Cards are shown and same betting mechanics are applied to this round
+  Flop,
+
+  // same mechanics as Matching Round (1)
+  Matching2,
+
+  // 4th community card is shown
+  Turn, 
+
+  // same mechanics as Matching Round (1)
+  Matching3,
+
+  // 5th community card is shown
+  River,
+
+  // same mechanics as Matching Round (1)
+  Matching4,
+
+  // players choose a word to play
+  Choice,
+}
