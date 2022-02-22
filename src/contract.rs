@@ -233,7 +233,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       Ok(HandleResponse::default())
     }
     HandleMsg::BuyChips {} => {
-      get_requesting_player(&deps, env.clone())?;
+      get_requesting_player(&state, env.clone())?;
       if env.message.sent_funds.len() != 1 {
         return Err(StdError::generic_err(
           "You can only send SCRT to this function",
@@ -275,7 +275,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       opened_dictionary,
     } => {
       require_at_least_two_players(&mut state)?;
-      let requester = get_requesting_player(&deps, env.clone())?;
+      let requester = get_requesting_player(&state, env.clone())?;
       if state.game_board.round != GameRound::Choice {
         return Err(StdError::generic_err(CANT_PUT_CARD_AT_THE_MOMENT));
       }
@@ -393,7 +393,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     HandleMsg::Bet { amount } => {
       require_at_least_two_players(&mut state)?;
 
-      let player = get_requesting_player(&deps, env.clone())?;
+      let player = get_requesting_player(&state, env.clone())?;
 
       if player.folded {
         return Err(StdError::generic_err(CANT_BET_IF_FOLDED));
@@ -436,7 +436,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     }
     HandleMsg::RequestNextTurn {} => {
       require_at_least_two_players(&mut state)?;
-      get_requesting_player(&deps, env)?;
+      get_requesting_player(&state, env)?;
 
       match state.game_board.winner_for_turn {
         None => return Err(StdError::generic_err(NO_NEXT_TURN)),
@@ -485,7 +485,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 
       let highest_bet = get_highest_bet(&state);
 
-      let player = get_requesting_player(&deps, env.clone())?;
+      let player = get_requesting_player(&state, env.clone())?;
 
       if player.folded {
         return Err(StdError::generic_err(CANT_BET_IF_FOLDED));
@@ -824,7 +824,7 @@ pub(crate) fn get_requesting_player(state: &State, env: Env) -> Result<Player, S
   match player {
     Some(p) => Ok(p.clone()),
     None => Err(StdError::generic_err(NOT_IN_GAME)),
-    }
+  }
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
