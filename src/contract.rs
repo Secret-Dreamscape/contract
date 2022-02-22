@@ -780,12 +780,13 @@ fn advance_turn_if_necessary(state: &mut State) {
     }
   }
   if previous_round != state.game_board.round {
-    for i in 0..state.players.len() {
-      if state.players[i].folded {
-        continue;
-      }
-      state.players[i].last_action = None;
-    }
+    state
+      .players
+      .iter_mut()
+      .filter(|p| !p.folded)
+      .for_each(|p| {
+        p.last_action = None;
+      });
   }
 }
 
