@@ -359,14 +359,15 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 
         let mut winner_indexes: Vec<usize> = vec![];
 
-        for i in 0..winners.len() {
-          for j in 0..state.players.len() {
-            if state.players[j].addr == winners[i].player_addr {
-              winner_indexes.push(j);
-              break;
-            }
-          }
-        }
+        winners.iter().for_each(|w| {
+          winner_indexes.push(
+            state
+              .players
+              .iter()
+              .position(|p| p.addr == w.player_addr)
+              .unwrap(),
+          );
+        });
 
         state.game_board.winner_for_turn = Some(winners[0].clone().player_addr);
 
