@@ -21,26 +21,26 @@ use crate::utils::general::get_non_folded_players;
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct InitMsg {
-  pub bg: u64,
-  pub password: Option<String>,
-  pub label: String,
-  pub stamp_addr: HumanAddr,
-  pub stamp_hash: String,
+  pub bg:            u64,
+  pub password:      Option<String>,
+  pub label:         String,
+  pub stamp_addr:    HumanAddr,
+  pub stamp_hash:    String,
   pub callback_addr: HumanAddr,
   pub callback_hash: String,
-  pub min_buy: u64,
-  pub max_buy: u64,
-  pub jackpot_addr: HumanAddr,
-  pub jackpot_hash: String,
+  pub min_buy:       u64,
+  pub max_buy:       u64,
+  pub jackpot_addr:  HumanAddr,
+  pub jackpot_hash:  String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PhonebookHandleMsg {
   RegisteredCallback {
-    address: HumanAddr,
-    private: bool,
-    label: String,
+    address:  HumanAddr,
+    private:  bool,
+    label:    String,
     referrer: String,
   },
 }
@@ -56,39 +56,39 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 ) -> InitResult {
   let block_time = env.block.time;
   let state = State {
-    players: vec![],
-    winner: None,
-    game_board: GameBoard {
-      round: GameRound::None,
-      winner_for_turn: None,
-      words: vec![],
-      river: vec![],
-      pool: 0,
-      turn: 0,
-      rake_percentage: 10,
-    },
-    deck: vec![],
-    can_join: true,
-    started_time: block_time,
-    level_design: msg.bg,
-    password: msg.password.clone(),
-    stamp_hash: msg.stamp_hash.clone(),
-    stamp_addr: msg.stamp_addr,
-    min_buy: msg.min_buy,
-    max_buy: msg.max_buy,
+    can_join:     true,
+    deck:         vec![],
     jackpot_addr: msg.jackpot_addr,
+    game_board:   GameBoard {
+      pool:            0,
+      rake_percentage: 10,
+      river:           vec![],
+      round:           GameRound::None,
+      turn:            0,
+      winner_for_turn: None,
+      words:           vec![],
+    },
     jackpot_hash: msg.jackpot_hash,
+    level_design: msg.bg,
+    max_buy:      msg.max_buy,
+    min_buy:      msg.min_buy,
+    password:     msg.password.clone(),
+    players:      vec![],
+    stamp_addr:   msg.stamp_addr,
+    stamp_hash:   msg.stamp_hash.clone(),
+    started_time: block_time,
+    winner:       None,
   };
 
   let callback_msg = PhonebookHandleMsg::RegisteredCallback {
-    address: env.contract.address.clone(),
-    private: msg.password.is_some(),
-    label: msg.label.clone(),
+    address:  env.contract.address,
+    label:    msg.label.clone(),
+    private:  msg.password.is_some(),
     referrer: msg.callback_hash.clone(),
   };
 
   let cosmos_msg =
-    callback_msg.to_cosmos_msg(msg.callback_hash.clone(), msg.callback_addr.clone(), None)?;
+    callback_msg.to_cosmos_msg(msg.callback_hash.clone(), msg.callback_addr, None)?;
 
   deps
     .storage
@@ -96,16 +96,16 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 
   Ok(InitResponse {
     messages: vec![cosmos_msg],
-    log: vec![],
+    log:      vec![],
   })
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct SecretDreamscapeNFT {
-  pub id: String,
+  pub gold:   bool,
+  pub id:     String,
   pub letter: String,
-  pub gold: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
@@ -122,9 +122,9 @@ impl HandleCallback for SecretDreamscapeJackpot {
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
   Join {
-    secret: u64,
+    nfts:     Vec<SecretDreamscapeNFT>,
     password: String,
-    nfts: Vec<SecretDreamscapeNFT>,
+    secret:   u64,
   },
   BuyChips {},
   Bet {
@@ -137,7 +137,7 @@ pub enum HandleMsg {
   Check {},
   Leave {},
   PutDownCard {
-    indexes: Vec<u8>,
+    indexes:           Vec<u8>,
     opened_dictionary: bool,
   },
   RequestNextTurn {},
@@ -147,9 +147,9 @@ pub enum HandleMsg {
 #[serde(rename_all = "snake_case")]
 pub enum StampHandleMsg {
   Stamp {
-    nft_id: String,
+    nft_id:  String,
     word_id: u16,
-    callee: HumanAddr,
+    callee:  HumanAddr,
   },
 }
 
@@ -171,431 +171,449 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
       secret,
       password,
       nfts,
-    } => {
-      if let Some(ref pass) = state.password {
-        if &password != pass {
-          return Err(StdError::generic_err(WRONG_PASSWORD));
-        }
-      }
-
-      if state.players.len() == 4 {
-        return Err(StdError::generic_err(GAME_FULL));
-      }
-
-      for player in state.players.clone() {
-        if player.addr == env.message.sender {
-          return Err(StdError::generic_err(ALREADY_IN_GAME));
-        }
-      }
-
-      state.players.push(Player {
-        addr: env.clone().message.sender,
-        secret,
-        hand: vec![],
-        hp: 5,
-        bet: 0,
-        bet2: 0,
-        folded: state.players.len() > 1,
-        checked: false,
-        checked2: false,
-        opened_dictionary: false,
-        last_action: if state.players.len() > 1 {
-          Some(PlayerAction::Folded)
-        } else {
-          None
-        },
-        nfts,
-        chips: 0,
-      });
-
-      if state.players.len() == 2 {
-        // after the second player joins we need to start generating decks
-        state.deck = generate_deck(get_rng(&state, &env));
-
-        state.game_board.river = get_n_cards(&mut state, 5);
-      }
-
-      if state.players.len() >= 2 {
-        for i in 0..state.players.len() {
-          if state.players[i].hand.is_empty() {
-            state.players[i].hand = get_n_cards(&mut state, 5).to_owned();
-          }
-        }
-
-        if state.game_board.round == GameRound::None {
-          state.game_board.round = GameRound::Blind;
-        }
-      }
-
-      deps
-        .storage
-        .set(b"state", &serde_json::to_vec(&state).unwrap());
-      Ok(HandleResponse::default())
-    }
-    HandleMsg::BuyChips {} => {
-      get_requesting_player(&state, env.clone())?;
-      if env.message.sent_funds.len() != 1 {
-        return Err(StdError::generic_err(
-          "You can only send SCRT to this function",
-        ));
-      }
-      if env.message.sent_funds[0].denom != "uscrt" {
-        return Err(StdError::generic_err(
-          "You can only send SCRT to this function",
-        ));
-      }
-
-      let amount = env.message.sent_funds[0].amount.u128() as u64;
-
-      if amount < state.min_buy || amount > state.max_buy {
-        return Err(StdError::generic_err(
-          "You didn't send enough SCRT to this function or you sent too much",
-        ));
-      }
-
-      for i in 0..state.players.len() {
-        if state.players[i].addr == env.message.sender {
-          if state.players[i].chips + amount > state.max_buy {
-            return Err(StdError::generic_err(
-              "You can't buy more chips than the maximum amount",
-            ));
-          }
-          state.players[i].chips += amount;
-        }
-      }
-
-      deps
-        .storage
-        .set(b"state", &serde_json::to_vec(&state).unwrap());
-
-      Ok(HandleResponse::default())
-    }
+    } => try_join(&mut state, password, &env, secret, nfts, deps),
+    HandleMsg::BuyChips {} => try_buy_chips(&mut state, &env, deps),
     HandleMsg::PutDownCard {
       indexes,
       opened_dictionary,
-    } => {
-      require_at_least_two_players(&mut state)?;
-      let requester = get_requesting_player(&state, env.clone())?;
-      if state.game_board.round != GameRound::Choice {
-        return Err(StdError::generic_err(CANT_PUT_CARD_AT_THE_MOMENT));
-      }
-      if requester.folded {
-        return Err(StdError::generic_err(CANT_PUT_CARD_IF_FOLDED));
-      }
+    } => try_put_down_word(&mut state, &env, indexes, opened_dictionary, deps),
+    HandleMsg::Bet { amount } => try_bet(&mut state, &env, amount, deps),
+    HandleMsg::RequestNextTurn {} => try_request_next_turn(&mut state, env, deps),
+    HandleMsg::Match { amount } => try_match_bet(&mut state, &env, amount, deps),
+    HandleMsg::Fold {} => try_fold(&mut state, &env, deps),
+    HandleMsg::Check {} => try_check(&mut state, &env, deps),
+    HandleMsg::Leave {} => try_leave(state, env, deps),
+  }
+}
 
-      if state
-        .game_board
-        .words
-        .iter()
-        .any(|w| w.player_addr == requester.addr)
-      {
-        return Err(StdError::generic_err(ALREADY_PUT_DOWN));
-      }
-
-      let mut indexes_used: Vec<u8> = vec![];
-      let mut word: Vec<Card> = vec![];
-      for index in indexes.iter() {
-        if indexes_used.contains(index) {
-          return Err(StdError::generic_err(CANT_USE_CARD_TWICE));
-        }
-        if index > &(4_u8) && index < &(250_u8) {
-          // 250...255 can be treated as the indexes for the cards on the board
-          return Err(StdError::generic_err(NOT_IN_YOUR_HAND));
-        }
-        word.push(if index >= &(250_u8) {
-          state.game_board.river[(*index as usize) - 250].clone()
-        } else {
-          requester.hand[(*index as usize)].clone()
-        });
-        indexes_used.push(*index);
-      }
-      let mut messages: Vec<CosmosMsg> = vec![];
-      let mut new_hand: Vec<Card> = vec![];
-      for i in 0..requester.hand.len() {
-        if !indexes.contains(&(i as u8)) {
-          new_hand.push(requester.hand[i].clone());
-        }
-      }
-      let mut word_string: String = "".to_string();
-      let word_id = find_word_id(word_string.as_str()).unwrap_or(0);
-      for i in 0..word.len() {
-        let card = word[i].clone();
-        let letter = ('A' as u8 + card.letter) as char;
-        word_string.push(letter);
-        let nft_for_card = requester
-          .nfts
-          .iter()
-          .find(|nft| nft.letter == letter.to_string() && nft.gold == card.gold);
-        if let Some(nft) = nft_for_card {
-          let message = StampHandleMsg::Stamp {
-            nft_id: nft.clone().id,
-            word_id: word_id as u16,
-            callee: env.clone().message.sender,
-          };
-          let cosmos_msg =
-            message.to_cosmos_msg(state.stamp_hash.clone(), state.stamp_addr.clone(), None)?;
-          messages.push(cosmos_msg);
-        }
-      }
-
-      state.game_board.words.push(Word {
-        cards: word,
-        player_addr: requester.addr.clone(),
-      });
-
-      for i in 0..state.players.len() {
-        if state.players[i].addr == requester.addr {
-          state.players[i].opened_dictionary = opened_dictionary;
-          state.players[i].last_action = Some(PlayerAction::ChoseWord);
-          state.players[i].hand = new_hand.clone();
-          break;
-        }
-      }
-
-      let non_folded_players = get_non_folded_players(&state);
-
-      if state.game_board.words.len() == non_folded_players.len() {
-        let winners = get_winners_for_turn(&state);
-
-        let mut winner_indexes: Vec<usize> = vec![];
-
-        winners.iter().for_each(|w| {
-          winner_indexes.push(
-            state
-              .players
-              .iter()
-              .position(|p| p.addr == w.player_addr)
-              .unwrap(),
-          );
-        });
-
-        state.game_board.winner_for_turn = Some(winners[0].clone().player_addr);
-
-        for i in 0..state.players.len() {
-          // if !winner_addresses.contains(&state.players[i].addr.clone()) && state.players[i].hp > 0 {
-          //  state.players[i].hp -= 1;
-          // }
-          state.players[i].bet = 0;
-          state.players[i].bet2 = 0;
-        }
-
-        let transfers = give_winners_their_money(&mut state, winner_indexes)?;
-        for t in transfers {
-          messages.push(t.clone());
-        }
-      }
-
-      deps
-        .storage
-        .set(b"state", &serde_json::to_vec(&state).unwrap());
-      send_messages_if_any(messages)
-    }
-    HandleMsg::Bet { amount } => {
-      require_at_least_two_players(&mut state)?;
-
-      let player = get_requesting_player(&state, env.clone())?;
-
-      if player.folded {
-        return Err(StdError::generic_err(CANT_BET_IF_FOLDED));
-      }
-
-      if amount < 125_000 {
-        return Err(StdError::generic_err("Less than  0.125scrt"));
-      }
-
-      if player.chips < amount {
-        return Err(StdError::generic_err("Not enough chips"));
-      }
-
-      if state.game_board.round != GameRound::Blind && state.game_board.round != GameRound::Flop {
-        return Err(StdError::generic_err("You can't bet anything now"));
-      }
-
-      state.game_board.pool += amount;
-      for i in 0..state.players.len() {
-        if state.players[i].addr == env.message.sender {
-          if state.players[i].folded {
-            return Err(StdError::generic_err(CANT_BET_IF_FOLDED));
-          }
-          state.players[i].last_action = Some(PlayerAction::SentBet(amount));
-          if state.game_board.round == GameRound::Blind {
-            state.players[i].bet += amount;
-          } else {
-            state.players[i].bet2 += amount;
-          }
-          state.players[i].chips -= amount;
-        }
-      }
-
-      advance_turn_if_necessary(&mut state);
-
-      deps
-        .storage
-        .set(b"state", &serde_json::to_vec(&state).unwrap());
-      Ok(HandleResponse::default())
-    }
-    HandleMsg::RequestNextTurn {} => {
-      require_at_least_two_players(&mut state)?;
-      get_requesting_player(&state, env)?;
-
-      match state.game_board.winner_for_turn {
-        None => return Err(StdError::generic_err(NO_NEXT_TURN)),
-        Some(ref _winner) => {
-          // let zero_count = state.players.iter().filter(|&p| p.hp == 0).count();
-          // if state.players.len() == (zero_count + 1) {
-          //   // if there's a winner
-          //   state.winner = state.game_board.winner_for_turn.clone();
-          // }
-          state.game_board.turn += 1;
-          state.game_board.winner_for_turn = None;
-          state.game_board.words = vec![];
-          state.game_board.river = get_n_cards(&mut state, 5);
-          state.game_board.round = GameRound::Blind;
-          state.game_board.pool = 0;
-          for i in 0..state.players.len() {
-            state.players[i].bet = 0;
-            state.players[i].bet2 = 0;
-            if state.players[i].chips < 125_000 {
-              state.players[i].folded = true;
-              state.players[i].last_action = Some(PlayerAction::Folded);
-            } else {
-              state.players[i].folded = false;
-              state.players[i].last_action = None;
-            }
-            state.players[i].checked = false;
-            state.players[i].checked2 = false;
-            state.players[i].opened_dictionary = false;
-            let mut new_hand = state.players[i].hand.clone();
-            if new_hand.len() < 5 {
-              let count: u8 = 5 - new_hand.len() as u8;
-              new_hand.append(&mut get_n_cards(&mut state, count));
-              state.players[i].hand = new_hand.clone();
-            }
-          }
-          deps
-            .storage
-            .set(b"state", &serde_json::to_vec(&state).unwrap());
-        }
-      }
-
-      Ok(HandleResponse::default())
-    }
-    HandleMsg::Match { amount } => {
-      require_at_least_two_players(&mut state)?;
-
-      let highest_bet = get_highest_bet(&state);
-
-      let player = get_requesting_player(&state, env.clone())?;
-
-      if player.folded {
-        return Err(StdError::generic_err(CANT_BET_IF_FOLDED));
-      }
-
-      if player.chips < amount {
-        return Err(StdError::generic_err("Not enough chips"));
-      }
-
-      for i in 0..state.players.len() {
-        if state.players[i].addr == env.message.sender {
-          if state.game_board.round == GameRound::Matching {
-            if amount < (highest_bet - state.players[i].bet) {
-              return Err(StdError::generic_err(WRONG_MATCHING_AMOUNT));
-            }
-            state.game_board.pool += highest_bet - state.players[i].bet;
-            state.players[i].bet = highest_bet;
-          } else {
-            if amount < (highest_bet - state.players[i].bet2) {
-              return Err(StdError::generic_err(WRONG_MATCHING_AMOUNT));
-            }
-            state.game_board.pool += highest_bet - state.players[i].bet2;
-            state.players[i].bet2 = highest_bet;
-          }
-          state.players[i].chips -= amount;
-          state.players[i].last_action = Some(PlayerAction::MatchedBet);
-        }
-      }
-
-      advance_turn_if_necessary(&mut state);
-
-      deps
-        .storage
-        .set(b"state", &serde_json::to_vec(&state).unwrap());
-
-      Ok(HandleResponse::default())
-    }
-    HandleMsg::Fold {} => {
-      require_at_least_two_players(&mut state)?;
-
-      for i in 0..state.players.len() {
-        if state.players[i].addr == env.message.sender {
-          state.players[i].folded = true;
-          state.players[i].hand = get_n_cards(&mut state, 5);
-          state.players[i].last_action = Some(PlayerAction::Folded);
-        }
-      }
-
-      advance_turn_if_necessary(&mut state);
-      let messages = advance_to_next_turn_if_all_players_but_one_folded(&mut state)?;
-
-      deps
-        .storage
-        .set(b"state", &serde_json::to_vec(&state).unwrap());
-
-      send_messages_if_any(messages)
-    }
-    HandleMsg::Check {} => {
-      require_at_least_two_players(&mut state)?;
-
-      match state.game_board.round {
-        GameRound::Blind | GameRound::Flop => {
-          for i in 0..state.players.len() {
-            if state.players[i].addr == env.message.sender {
-              if state.game_board.round == GameRound::Blind {
-                state.players[i].checked = true;
-              } else {
-                state.players[i].checked2 = true;
-              }
-              state.players[i].last_action = Some(PlayerAction::Checked);
-            }
-          }
-        }
-        _ => return Err(StdError::generic_err(CANT_CHECK_IF_NEED_TO_MATCH)),
-      }
-
-      advance_turn_if_necessary(&mut state);
-      let messages = advance_to_next_turn_if_all_players_but_one_folded(&mut state)?;
-      deps
-        .storage
-        .set(b"state", &serde_json::to_vec(&state).unwrap());
-
-      send_messages_if_any(messages)
-    }
-    HandleMsg::Leave {} => {
-      let mut chips: u64 = 0;
-      for i in 0..state.players.len() {
-        if state.players[i].addr == env.message.sender {
-          chips = state.players[i].chips;
-          state.players.remove(i);
-          break;
-        }
-      }
-
-      advance_turn_if_necessary(&mut state);
-      let mut messages = advance_to_next_turn_if_all_players_but_one_folded(&mut state)?;
-      if chips > 0 {
-        messages.push(CosmosMsg::Bank(BankMsg::Send {
-          from_address: env.contract.address.clone(),
-          to_address: env.message.sender.clone(),
-          amount: vec![Coin::new(chips as u128, "uscrt")],
-        }));
-      }
-      deps
-        .storage
-        .set(b"state", &serde_json::to_vec(&state).unwrap());
-
-      send_messages_if_any(messages)
+// When the user leaves the game, remove them from the list of users and give them their money back.
+fn try_leave<S: Storage, A: Api, Q: Querier>(
+  mut state: State,
+  env: Env,
+  deps: &mut Extern<S, A, Q>,
+) -> Result<HandleResponse, StdError> {
+  let mut chips: u64 = 0;
+  for i in 0..state.players.len() {
+    if state.players[i].addr == env.message.sender {
+      chips = state.players[i].chips;
+      state.players.remove(i);
+      break;
     }
   }
+
+  advance_turn_if_necessary(&mut state);
+  let mut messages = advance_to_next_turn_if_all_players_but_one_folded(&mut state)?;
+  if chips > 0 {
+    messages.push(CosmosMsg::Bank(BankMsg::Send {
+      from_address: env.contract.address.clone(),
+      to_address:   env.message.sender,
+      amount:       vec![Coin::new(chips as u128, "uscrt")],
+    }));
+  }
+  deps
+    .storage
+    .set(b"state", &serde_json::to_vec(&state).unwrap());
+  send_messages_if_any(messages)
+}
+
+// Handle checking functionality
+fn try_check<S: Storage, A: Api, Q: Querier>(
+  state: &mut State,
+  env: &Env,
+  deps: &mut Extern<S, A, Q>,
+) -> Result<HandleResponse, StdError> {
+  require_at_least_two_players(state)?;
+  match state.game_board.round {
+    GameRound::Blind | GameRound::Flop => {
+      for i in 0..state.players.len() {
+        if state.players[i].addr == env.message.sender {
+          if state.game_board.round == GameRound::Blind {
+            state.players[i].checked = true;
+          } else {
+            state.players[i].checked2 = true;
+          }
+          state.players[i].last_action = Some(PlayerAction::Checked);
+        }
+      }
+    }
+    _ => return Err(StdError::generic_err(CANT_CHECK_IF_NEED_TO_MATCH)),
+  }
+  advance_turn_if_necessary(state);
+  let messages = advance_to_next_turn_if_all_players_but_one_folded(state)?;
+  deps
+    .storage
+    .set(b"state", &serde_json::to_vec(&*state).unwrap());
+  send_messages_if_any(messages)
+}
+
+fn try_fold<S: Storage, A: Api, Q: Querier>(
+  state: &mut State,
+  env: &Env,
+  deps: &mut Extern<S, A, Q>,
+) -> Result<HandleResponse, StdError> {
+  require_at_least_two_players(state)?;
+  for i in 0..state.players.len() {
+    if state.players[i].addr == env.message.sender {
+      state.players[i].folded = true;
+      state.players[i].hand = get_n_cards(state, 5);
+      state.players[i].last_action = Some(PlayerAction::Folded);
+    }
+  }
+  advance_turn_if_necessary(state);
+  let messages = advance_to_next_turn_if_all_players_but_one_folded(state)?;
+  deps
+    .storage
+    .set(b"state", &serde_json::to_vec(&*state).unwrap());
+  send_messages_if_any(messages)
+}
+
+fn try_match_bet<S: Storage, A: Api, Q: Querier>(
+  state: &mut State,
+  env: &Env,
+  amount: u64,
+  deps: &mut Extern<S, A, Q>,
+) -> Result<HandleResponse, StdError> {
+  require_at_least_two_players(state)?;
+  let highest_bet = get_highest_bet(&*state);
+  let player = get_requesting_player(&*state, env.clone())?;
+  if player.folded {
+    return Err(StdError::generic_err(CANT_BET_IF_FOLDED));
+  }
+  if player.chips < amount {
+    return Err(StdError::generic_err("Not enough chips"));
+  }
+  for i in 0..state.players.len() {
+    if state.players[i].addr == env.message.sender {
+      if state.game_board.round == GameRound::Matching {
+        if amount < (highest_bet - state.players[i].bet) {
+          return Err(StdError::generic_err(WRONG_MATCHING_AMOUNT));
+        }
+        state.game_board.pool += highest_bet - state.players[i].bet;
+        state.players[i].bet = highest_bet;
+      } else {
+        if amount < (highest_bet - state.players[i].bet2) {
+          return Err(StdError::generic_err(WRONG_MATCHING_AMOUNT));
+        }
+        state.game_board.pool += highest_bet - state.players[i].bet2;
+        state.players[i].bet2 = highest_bet;
+      }
+      state.players[i].chips -= amount;
+      state.players[i].last_action = Some(PlayerAction::MatchedBet);
+    }
+  }
+  advance_turn_if_necessary(state);
+  deps
+    .storage
+    .set(b"state", &serde_json::to_vec(&*state).unwrap());
+  Ok(HandleResponse::default())
+}
+
+fn try_request_next_turn<S: Storage, A: Api, Q: Querier>(
+  state: &mut State,
+  env: Env,
+  deps: &mut Extern<S, A, Q>,
+) -> Result<HandleResponse, StdError> {
+  require_at_least_two_players(state)?;
+  get_requesting_player(&*state, env)?;
+  match state.game_board.winner_for_turn {
+    None => return Err(StdError::generic_err(NO_NEXT_TURN)),
+    Some(ref _winner) => {
+      // let zero_count = state.players.iter().filter(|&p| p.hp == 0).count();
+      // if state.players.len() == (zero_count + 1) {
+      //   // if there's a winner
+      //   state.winner = state.game_board.winner_for_turn.clone();
+      // }
+      state.game_board.turn += 1;
+      state.game_board.winner_for_turn = None;
+      state.game_board.words = vec![];
+      state.game_board.river = get_n_cards(state, 5);
+      state.game_board.round = GameRound::Blind;
+      state.game_board.pool = 0;
+      for i in 0..state.players.len() {
+        state.players[i].bet = 0;
+        state.players[i].bet2 = 0;
+        if state.players[i].chips < 125_000 {
+          state.players[i].folded = true;
+          state.players[i].last_action = Some(PlayerAction::Folded);
+        } else {
+          state.players[i].folded = false;
+          state.players[i].last_action = None;
+        }
+        state.players[i].checked = false;
+        state.players[i].checked2 = false;
+        state.players[i].opened_dictionary = false;
+        let mut new_hand = state.players[i].hand.clone();
+        if new_hand.len() < 5 {
+          let count: u8 = 5 - new_hand.len() as u8;
+          new_hand.append(&mut get_n_cards(state, count));
+          state.players[i].hand = new_hand.clone();
+        }
+      }
+      deps
+        .storage
+        .set(b"state", &serde_json::to_vec(&*state).unwrap());
+    }
+  }
+  Ok(HandleResponse::default())
+}
+
+fn try_bet<S: Storage, A: Api, Q: Querier>(
+  state: &mut State,
+  env: &Env,
+  amount: u64,
+  deps: &mut Extern<S, A, Q>,
+) -> Result<HandleResponse, StdError> {
+  require_at_least_two_players(state)?;
+  let player = get_requesting_player(&*state, env.clone())?;
+  if player.folded {
+    return Err(StdError::generic_err(CANT_BET_IF_FOLDED));
+  }
+  if amount < 125_000 {
+    return Err(StdError::generic_err("Less than  0.125scrt"));
+  }
+  if player.chips < amount {
+    return Err(StdError::generic_err("Not enough chips"));
+  }
+  if state.game_board.round != GameRound::Blind && state.game_board.round != GameRound::Flop {
+    return Err(StdError::generic_err("You can't bet anything now"));
+  }
+  state.game_board.pool += amount;
+  for i in 0..state.players.len() {
+    if state.players[i].addr == env.message.sender {
+      if state.players[i].folded {
+        return Err(StdError::generic_err(CANT_BET_IF_FOLDED));
+      }
+      state.players[i].last_action = Some(PlayerAction::SentBet(amount));
+      if state.game_board.round == GameRound::Blind {
+        state.players[i].bet += amount;
+      } else {
+        state.players[i].bet2 += amount;
+      }
+      state.players[i].chips -= amount;
+    }
+  }
+  advance_turn_if_necessary(state);
+  deps
+    .storage
+    .set(b"state", &serde_json::to_vec(&*state).unwrap());
+  Ok(HandleResponse::default())
+}
+
+fn try_put_down_word<S: Storage, A: Api, Q: Querier>(
+  state: &mut State,
+  env: &Env,
+  indexes: Vec<u8>,
+  opened_dictionary: bool,
+  deps: &mut Extern<S, A, Q>,
+) -> Result<HandleResponse, StdError> {
+  require_at_least_two_players(state)?;
+  let requester = get_requesting_player(&*state, env.clone())?;
+  if state.game_board.round != GameRound::Choice {
+    return Err(StdError::generic_err(CANT_PUT_CARD_AT_THE_MOMENT));
+  }
+  if requester.folded {
+    return Err(StdError::generic_err(CANT_PUT_CARD_IF_FOLDED));
+  }
+  if state
+    .game_board
+    .words
+    .iter()
+    .any(|w| w.player_addr == requester.addr)
+  {
+    return Err(StdError::generic_err(ALREADY_PUT_DOWN));
+  }
+  let mut indexes_used: Vec<u8> = vec![];
+  let mut word: Vec<Card> = vec![];
+  for index in indexes.iter() {
+    if indexes_used.contains(index) {
+      return Err(StdError::generic_err(CANT_USE_CARD_TWICE));
+    }
+    if index > &(4_u8) && index < &(250_u8) {
+      // 250...255 can be treated as the indexes for the cards on the board
+      return Err(StdError::generic_err(NOT_IN_YOUR_HAND));
+    }
+    word.push(if index >= &(250_u8) {
+      state.game_board.river[(*index as usize) - 250].clone()
+    } else {
+      requester.hand[(*index as usize)].clone()
+    });
+    indexes_used.push(*index);
+  }
+  let mut messages: Vec<CosmosMsg> = vec![];
+  let mut new_hand: Vec<Card> = vec![];
+  for i in 0..requester.hand.len() {
+    if !indexes.contains(&(i as u8)) {
+      new_hand.push(requester.hand[i].clone());
+    }
+  }
+  let mut word_string: String = "".to_string();
+  let word_id = find_word_id(word_string.as_str()).unwrap_or(0);
+  for card in &word {
+    let letter = (b'A' + card.letter) as char;
+    word_string.push(letter);
+    let nft_for_card = requester
+      .nfts
+      .iter()
+      .find(|nft| nft.letter == letter.to_string() && nft.gold == card.gold);
+    if let Some(nft) = nft_for_card {
+      let message = StampHandleMsg::Stamp {
+        nft_id:  nft.clone().id,
+        word_id: word_id as u16,
+        callee:  env.clone().message.sender,
+      };
+      let cosmos_msg =
+        message.to_cosmos_msg(state.stamp_hash.clone(), state.stamp_addr.clone(), None)?;
+      messages.push(cosmos_msg);
+    }
+  }
+  state.game_board.words.push(Word {
+    cards:       word,
+    player_addr: requester.addr.clone(),
+  });
+  for i in 0..state.players.len() {
+    if state.players[i].addr == requester.addr {
+      state.players[i].opened_dictionary = opened_dictionary;
+      state.players[i].last_action = Some(PlayerAction::ChoseWord);
+      state.players[i].hand = new_hand.clone();
+      break;
+    }
+  }
+  let non_folded_players = get_non_folded_players(&*state);
+  if state.game_board.words.len() == non_folded_players.len() {
+    let winners = get_winners_for_turn(&*state);
+
+    let mut winner_indexes: Vec<usize> = vec![];
+
+    winners.iter().for_each(|w| {
+      winner_indexes.push(
+        state
+          .players
+          .iter()
+          .position(|p| p.addr == w.player_addr)
+          .unwrap(),
+      );
+    });
+
+    state.game_board.winner_for_turn = Some(winners[0].clone().player_addr);
+
+    for i in 0..state.players.len() {
+      // if !winner_addresses.contains(&state.players[i].addr.clone()) && state.players[i].hp > 0 {
+      //  state.players[i].hp -= 1;
+      // }
+      state.players[i].bet = 0;
+      state.players[i].bet2 = 0;
+    }
+
+    let transfers = give_winners_their_money(state, winner_indexes)?;
+    for t in transfers {
+      messages.push(t.clone());
+    }
+  }
+  deps
+    .storage
+    .set(b"state", &serde_json::to_vec(&*state).unwrap());
+  send_messages_if_any(messages)
+}
+
+fn try_buy_chips<S: Storage, A: Api, Q: Querier>(
+  state: &mut State,
+  env: &Env,
+  deps: &mut Extern<S, A, Q>,
+) -> Result<HandleResponse, StdError> {
+  get_requesting_player(state, env.clone())?;
+  if env.message.sent_funds.len() != 1 {
+    return Err(StdError::generic_err(
+      "You can only send SCRT to this function",
+    ));
+  }
+  if env.message.sent_funds[0].denom != "uscrt" {
+    return Err(StdError::generic_err(
+      "You can only send SCRT to this function",
+    ));
+  }
+  let amount = env.message.sent_funds[0].amount.u128() as u64;
+  if amount < state.min_buy || amount > state.max_buy {
+    return Err(StdError::generic_err(
+      "You didn't send enough SCRT to this function or you sent too much",
+    ));
+  }
+  for i in 0..state.players.len() {
+    if state.players[i].addr == env.message.sender {
+      if state.players[i].chips + amount > state.max_buy {
+        return Err(StdError::generic_err(
+          "You can't buy more chips than the maximum amount",
+        ));
+      }
+      state.players[i].chips += amount;
+    }
+  }
+  deps
+    .storage
+    .set(b"state", &serde_json::to_vec(state).unwrap());
+  Ok(HandleResponse::default())
+}
+
+fn try_join<S: Storage, A: Api, Q: Querier>(
+  state: &mut State,
+  password: String,
+  env: &Env,
+  secret: u64,
+  nfts: Vec<SecretDreamscapeNFT>,
+  deps: &mut Extern<S, A, Q>,
+) -> Result<HandleResponse, StdError> {
+  if let Some(ref pass) = state.password {
+    if &password != pass {
+      return Err(StdError::generic_err(WRONG_PASSWORD));
+    }
+  }
+  if state.players.len() == 4 {
+    return Err(StdError::generic_err(GAME_FULL));
+  }
+  for player in state.players.clone() {
+    if player.addr == env.message.sender {
+      return Err(StdError::generic_err(ALREADY_IN_GAME));
+    }
+  }
+  state.players.push(Player {
+    addr: env.clone().message.sender,
+    secret,
+    hand: vec![],
+    hp: 5,
+    bet: 0,
+    bet2: 0,
+    folded: state.players.len() > 1,
+    checked: false,
+    checked2: false,
+    opened_dictionary: false,
+    last_action: if state.players.len() > 1 {
+      Some(PlayerAction::Folded)
+    } else {
+      None
+    },
+    nfts,
+    chips: 0,
+  });
+  if state.players.len() == 2 {
+    // after the second player joins we need to start generating decks
+    state.deck = generate_deck(get_rng(&*state, env));
+
+    state.game_board.river = get_n_cards(state, 5);
+  }
+  if state.players.len() >= 2 {
+    for i in 0..state.players.len() {
+      if state.players[i].hand.is_empty() {
+        state.players[i].hand = get_n_cards(state, 5).to_owned();
+      }
+    }
+
+    if state.game_board.round == GameRound::None {
+      state.game_board.round = GameRound::Blind;
+    }
+  }
+  deps
+    .storage
+    .set(b"state", &serde_json::to_vec(&*state).unwrap());
+  Ok(HandleResponse::default())
 }
 
 fn send_messages_if_any(messages: Vec<CosmosMsg>) -> Result<HandleResponse, StdError> {
@@ -629,7 +647,7 @@ fn give_winners_their_money(
     )?;
     return Ok(vec![msg]);
   }
-  return Ok(vec![]);
+  Ok(vec![])
 }
 
 fn get_highest_bet(state: &State) -> u64 {

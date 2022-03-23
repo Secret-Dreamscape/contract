@@ -4,9 +4,7 @@ use std::fs::create_dir_all;
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
 use secret_dreamscape::contract::{HandleMsg, InitMsg};
-use secret_dreamscape::query::{
-  CanJoinResponse, GameState, PlayerStatus, QueryMsg, Result,
-};
+use secret_dreamscape::query::{CanJoinResponse, GameState, PlayerStatus, QueryMsg, Result};
 
 fn main() {
   let mut out_dir = current_dir().unwrap();

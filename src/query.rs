@@ -11,9 +11,9 @@ use crate::utils::general::get_non_folded_players;
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-  GetResult {},
   CanJoin {},
   GetGameState { secret: u64 },
+  GetResult {},
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
@@ -25,57 +25,53 @@ pub struct Result {
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct GameState {
-  pub pool: u64,
-
-  pub players: Vec<PlayerStatus>,
-
-  pub turn: u8,
-  pub round: GameRound,
-
-  pub hand: Vec<Card>,
-  pub river: Option<Vec<Card>>,
-
-  pub words: Vec<WordView>,
-  pub winner: Option<HumanAddr>,
+  pub hand:         Vec<Card>,
   pub level_design: u64,
-  pub min_buy: u64,
-  pub max_buy: u64,
+  pub max_buy:      u64,
+  pub min_buy:      u64,
+  pub players:      Vec<PlayerStatus>,
+  pub pool:         u64,
+  pub river:        Option<Vec<Card>>,
+  pub round:        GameRound,
+  pub turn:         u8,
+  pub winner:       Option<HumanAddr>,
+  pub words:        Vec<WordView>,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct WordView {
-  pub word: Option<Word>,
-  pub points: u16,
+  pub points:  u16,
   pub visible: bool,
+  pub word:    Option<Word>,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct PlayerStatus {
-  hp: u8,
-  bet: u64,
-  addr: HumanAddr,
-  folded: bool,
-  pub last_action: Option<PlayerAction>,
+  addr:              HumanAddr,
+  bet:               u64,
+  chips:             u64,
+  folded:            bool,
+  hp:                u8,
   opened_dictionary: bool,
-  chips: u64,
+  pub last_action:   Option<PlayerAction>,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct CanJoinResponse {
-  can_join: bool,
-  started_time: u64,
+  can_join:              bool,
+  started_time:          u64,
   pub requires_password: bool,
 }
 
 fn get_stats_for_players(saved_state: &State, output_state: &mut GameState) {
   for player in &saved_state.players {
     output_state.players.push(PlayerStatus {
-      hp: player.clone().hp,
-      addr: player.clone().addr,
-      bet: if saved_state.game_board.round == GameRound::Flop
+      hp:                player.clone().hp,
+      addr:              player.clone().addr,
+      bet:               if saved_state.game_board.round == GameRound::Flop
         || saved_state.game_board.round == GameRound::Matching2
         || saved_state.game_board.round == GameRound::Choice
       {
@@ -83,10 +79,10 @@ fn get_stats_for_players(saved_state: &State, output_state: &mut GameState) {
       } else {
         player.clone().bet
       },
-      folded: player.folded,
-      last_action: player.clone().last_action,
+      folded:            player.folded,
+      last_action:       player.clone().last_action,
       opened_dictionary: player.clone().opened_dictionary,
-      chips: player.clone().chips,
+      chips:             player.clone().chips,
     })
   }
 }
@@ -128,21 +124,21 @@ fn get_words(
     for word in &saved_state.game_board.words {
       if words_submitted_count == non_folded_players.len() {
         output_state.words.push(WordView {
-          word: Some(word.clone()),
-          points: get_score_for_word(&word.cards),
+          word:    Some(word.clone()),
+          points:  get_score_for_word(&word.cards),
           visible: true,
         });
       } else {
         output_state.words.push(WordView {
-          word: Some(Word {
-            cards: if word.player_addr == player.addr {
+          word:    Some(Word {
+            cards:       if word.player_addr == player.addr {
               word.cards.clone()
             } else {
               vec![]
             },
             player_addr: word.player_addr.clone(),
           }),
-          points: if word.player_addr == player.addr {
+          points:  if word.player_addr == player.addr {
             get_score_for_word(&word.cards)
           } else {
             0
@@ -192,21 +188,21 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
         serde_json::from_slice(&deps.storage.get(b"state").unwrap()).unwrap();
 
       let mut output_state = GameState {
-        words: vec![],
-        pool: saved_state.game_board.pool,
-        river: None,
-        turn: saved_state.game_board.turn,
-        winner: if let Some(winner) = saved_state.winner.clone() {
+        words:        vec![],
+        pool:         saved_state.game_board.pool,
+        river:        None,
+        turn:         saved_state.game_board.turn,
+        winner:       if let Some(winner) = saved_state.winner.clone() {
           Some(winner)
         } else {
           saved_state.game_board.winner_for_turn.clone()
         },
-        round: saved_state.game_board.round.clone(),
-        players: vec![],
-        hand: vec![],
+        round:        saved_state.game_board.round.clone(),
+        players:      vec![],
+        hand:         vec![],
         level_design: saved_state.level_design,
-        min_buy: saved_state.min_buy,
-        max_buy: saved_state.max_buy,
+        min_buy:      saved_state.min_buy,
+        max_buy:      saved_state.max_buy,
       };
 
       get_stats_for_players(&saved_state, &mut output_state);

@@ -36,9 +36,7 @@ pub fn get_score_for_word(cards: &[Card]) -> u16 {
   score
 }
 
-pub fn find_word_id(word: &str) -> Option<usize> {
-  ALLOWED_WORDS.iter().position(|w| w == &word)
-}
+pub fn find_word_id(word: &str) -> Option<usize> { ALLOWED_WORDS.iter().position(|w| w == &word) }
 
 pub fn get_n_cards(state: &mut State, count: u8) -> Vec<Card> {
   let mut cards = vec![];
@@ -83,7 +81,7 @@ pub fn generate_deck(mut rng: ChaChaRng) -> Vec<Card> {
     for _ in 0..*count {
       deck.push(Card {
         letter: *letter,
-        gold: false,
+        gold:   false,
       })
     }
   }
