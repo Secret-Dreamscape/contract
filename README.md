@@ -4,6 +4,10 @@ Welcome to Secret DreamScape, a mysterious journey into the world between sleepi
 
 Secret DreamScape is a multiplayer card game that will test your ability to out-wit and out-think your opponents with the victor taking unimaginable spoils.
 
+## Working With Us
+
+We are a lean globally distributed team and are currently looking for passionate developers to partner with. We actually have several awesome projects in our pipeline. One of which has recently received grant funding through SCRT Labs to start building enhanced developer tools for the network. We will also be running a validator node very soon for the network. If you like our work and want to work regularily with us then we'd love to hear from you. We have stock options available for qualified development partners. You can find us in the weekly Secret Network Developer Committee calls on Discord. Drop in and introduce yourself! https://scrt.network/committees
+
 ## Game Rules
 
 Each player is dealt a hand of letter cards and can place bets against their opponents. Once a bet is agreed on, community cards are played and each player can bet on the strength of the highest scoring word they can create. When all bets are agreed on, the showdown happens and to the winner go the riches. Gameplay ends when one player eliminates all of the others by reducing their hit points to zero.
@@ -21,29 +25,24 @@ The deck coinsists of the classical scrabble.
 
 ## Demo
 
-A live demo is available [here](http://secretdreamscape.com)
+The game is live on mainnet [here](https://play.secretdreamscape.com/)!
 
 A recording of the gameplay of the game can be found [here](https://youtu.be/qRRicifO8xI)
 
 ## Getting Started
 
-Secret Dreamscape is built on the Secret Network, a Cosmos-based blockchain with a focus on privacy and security.
+Secret Dreamscape is built on the Secret Network, a Cosmos-based blockchain with a focus on privacy and security and the only live blockchain capable of protecting user privacy.
 
-The codebase is split into two public git repositories. The repository you're looking at right now contains our frontend, while [this repository](https://github.com/thelmuxkriovar/secret-dreamscape) contains the code for the contracts that makes the game work.
+The codebase is split into 6 public git repositories and 1 private frontend repository. 
 
-The frontend is a simple webpack project and can be run easily with a few simple commands (assuming you have node and yarn installed in your system).
+* contract
+* stamper
+* jackpot
+* phonebook
+* user-card-settings
+* NFTs-first-edition
 
-```sh
-yarn
-yarn run dev
-```
-
-This will start a development webserver on port 8081. By default it will try to connect to the testnet that we setup for this project (listening at http://secretdreamscape.com:1337), but you may want to instead use your own local testnet, in which case you may want to update lines 11 and 12 on src/main.js with the url to the chain as well as the codeId for the stored contract.
-
-```js
-const chain = "http://secretdreamscape.com:1337/";
-const codeId = 1;
-```
+Setup instructions are provided below and also in the readme's of the mentinoned contracts
 
 This brings us to compiling and storing the contract. You will need to have docker and rust setup and working on your system to get started. Provided that you have cloned the contract repo and that you've entered that folder in your terminal, you can follow the following steps to get started.
 
@@ -82,10 +81,13 @@ The secret network doesn't provide a simple container to setup a faucet for your
 secretd tx bank send a "ADDRESS HERE" 100000000uscrt
 ```
 
-## Technologies used
+## Technologies used in the Frontend
+
+The frontend repo will remain private for now. However, we're looking to collaborate with some talented frontend developers. If you're interested in diving into the technologies described below, please reach out!
 
 We make use of a number of different technologies in this project.
 
 - mobx, a state management library that makes it easy to handle the state for the game, and make sure that everyhing is kept in place
 - phaser, a game engine for the web designed to make it east to develop all kinds of games
 - secretjs, a library that allows for the interactions with the secret network.
+- svelte, for wrapping our common components into reusable web components
