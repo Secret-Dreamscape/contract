@@ -6,70 +6,68 @@ use crate::contract::SecretDreamscapeNFT;
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 pub struct State {
-  pub players: Vec<Player>,
-  pub can_join: bool,
-
-  pub game_board: GameBoard,
-  pub winner: Option<HumanAddr>,
-  pub deck: Vec<Card>,
-  pub started_time: u64,
-  pub level_design: u64,
-  pub password: Option<String>,
-  pub stamp_hash: String,
-  pub stamp_addr: HumanAddr,
-
-  pub min_buy: u64,
-  pub max_buy: u64,
+  pub can_join:     bool,
+  pub deck:         Vec<Card>,
+  pub game_board:   GameBoard,
   pub jackpot_addr: HumanAddr,
   pub jackpot_hash: String,
+  pub level_design: u64,
+  pub max_buy:      u64,
+  pub min_buy:      u64,
+  pub password:     Option<String>,
+  pub players:      Vec<Player>,
+  pub stamp_addr:   HumanAddr,
+  pub stamp_hash:   String,
+  pub started_time: u64,
+  pub winner:       Option<HumanAddr>,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema, PartialEq)]
 pub enum PlayerAction {
-  SentBet(u64),
-  MatchedBet,
-  Folded,
-  ChoseWord,
   Checked,
+  ChoseWord,
+  Folded,
+  MatchedBet,
+  SentBet(u64),
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 pub struct Player {
-  pub addr: HumanAddr,
-  pub secret: u64,
-  pub hp: u8,
-  pub hand: Vec<Card>,
-  pub bet: u64,
-  pub bet2: u64,
-  pub folded: bool,
-  pub checked: bool,
-  pub checked2: bool,
+  pub addr:              HumanAddr,
+  pub bet:               u64,
+  pub bet2:              u64,
+  pub checked:           bool,
+  pub checked2:          bool,
+  pub chips:             u64,
+  pub folded:            bool,
+  pub hand:              Vec<Card>,
+  pub hp:                u8,
+  pub last_action:       Option<PlayerAction>,
+  pub nfts:              Vec<SecretDreamscapeNFT>,
   pub opened_dictionary: bool,
-  pub last_action: Option<PlayerAction>,
-  pub nfts: Vec<SecretDreamscapeNFT>,
-  pub chips: u64,
+  pub secret:            u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 pub struct Card {
   pub letter: u8,
-  pub gold: bool,
+  pub gold:   bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 pub struct GameBoard {
-  pub turn: u8,
-  pub round: GameRound,
-  pub winner_for_turn: Option<HumanAddr>,
-  pub words: Vec<Word>,
-  pub river: Vec<Card>,
-  pub pool: u64,
+  pub pool:            u64,
   pub rake_percentage: u64,
+  pub river:           Vec<Card>,
+  pub round:           GameRound,
+  pub turn:            u8,
+  pub winner_for_turn: Option<HumanAddr>,
+  pub words:           Vec<Word>,
 }
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 pub struct Word {
-  pub cards: Vec<Card>,
+  pub cards:       Vec<Card>,
   pub player_addr: HumanAddr,
 }
 
